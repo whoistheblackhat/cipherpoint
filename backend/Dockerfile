@@ -18,8 +18,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application source
+# Copy backend source
 COPY . .
+
+# Copy frontend (Docker build context must include parent ../frontend)
+# This requires Docker build context = project root
+COPY frontend /app/frontend
 
 # Data directory for any local SQLite fallback (not used in Turso mode)
 RUN mkdir -p /app/data
@@ -33,7 +37,7 @@ ENV ENV=production \
 EXPOSE 10000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-    CMD curl -fsS http://localhost:${PORT}/api/health || exit 1
+    CMD curl -fsS http://localhost:${PORT}/healthz || exit 1
 
 # Single worker because: background threads (bot polling, expiry scheduler) must run only once.
 # Scale by adding instances, not workers.

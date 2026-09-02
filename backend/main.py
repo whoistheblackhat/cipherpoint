@@ -1680,6 +1680,21 @@ def health_check():
     """Health check endpoint"""
     return {"status": "✅ CipherPoint API is running!"}
 
+@app.get("/")
+def root_redirect():
+    """Root endpoint — for Render health checks and basic reachability test."""
+    return {
+        "service": "CipherPoint API",
+        "status": "ok",
+        "docs": "/docs",
+        "health": "/api/health",
+    }
+
+@app.get("/healthz")
+def liveness_probe():
+    """Liveness probe (no DB query) — for k8s/Render."""
+    return {"status": "alive"}
+
 # ==================== ROOT & STATIC FILES ====================
 
 # Serve frontend static files (must be registered AFTER all API routes)

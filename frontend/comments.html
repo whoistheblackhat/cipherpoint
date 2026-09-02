@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CipherPoint | Comments</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body data-page="comments">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="app-shell">
+        <aside class="sidebar-nav" id="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-mark-icon"><i class="fa-solid fa-user-secret"></i></div>
+                <div class="brand-text">CipherPoint</div>
+            </div>
+            <button id="sidebarToggle" class="sidebar-toggle" aria-label="Toggle navigation">
+                <i class="fa-solid fa-angle-left"></i>
+            </button>
+            <nav class="sidebar-links">
+                <a href="dashboard.html" class="sidebar-link">
+                    <i class="fa-solid fa-house"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="community.html" class="sidebar-link">
+                    <i class="fa-solid fa-users"></i>
+                    <span>Community</span>
+                </a>
+                <a href="leaderboard.html" class="sidebar-link">
+                    <i class="fa-solid fa-trophy"></i>
+                    <span>Leaderboard</span>
+                </a>
+                <a href="profile.html" class="sidebar-link">
+                    <i class="fa-solid fa-user-astronaut"></i>
+                    <span>Profile</span>
+                </a>
+                <a href="settings.html" class="sidebar-link">
+                    <i class="fa-solid fa-gear"></i>
+                    <span>Settings</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <button id="logoutBtn" class="btn btn-light btn-small btn-block">
+                    <i class="fa-solid fa-right-from-bracket"></i> Sign Out
+                </button>
+            </div>
+        </aside>
+
+        <div class="app-main">
+            <header class="dashboard-header">
+                <div class="container dashboard-topbar">
+                    <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <a id="backToChallengeBtn" class="btn btn-light btn-small" href="challenge_detail.html" style="text-decoration:none;margin-right:10px;">
+                        <i class="fa-solid fa-arrow-left"></i> Back
+                    </a>
+                    <div>
+                        <span class="eyebrow">Discussion</span>
+                        <h2 id="commentsPageTitle" style="margin:0;">Loading...</h2>
+                    </div>
+                </div>
+            </header>
+
+            <main class="container comments-shell">
+                <div id="commentsLoading" class="loading">Loading discussion...</div>
+                <div id="commentsError" class="loading" style="display:none;color:var(--danger);"></div>
+
+                <div id="commentsContent" style="display:none;">
+                    <div class="comments-toolbar">
+                        <div class="comments-sort">
+                            <span class="sort-label">Sort by:</span>
+                            <button class="sort-btn active" data-sort="best">Best</button>
+                            <button class="sort-btn" data-sort="top">Top</button>
+                            <button class="sort-btn" data-sort="new">New</button>
+                            <button class="sort-btn" data-sort="controversial">Controversial</button>
+                        </div>
+                        <div class="comments-count">
+                            <span id="totalCommentsCount">0</span> Comments
+                        </div>
+                    </div>
+
+                    <div id="commentsComposerTop"></div>
+
+                    <div id="redditCommentsList" class="reddit-comments-list"></div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <div id="reportModal" class="modal">
+        <div class="modal-card">
+            <button class="modal-close" aria-label="Close report panel">&times;</button>
+            <div class="form-header" style="margin-bottom:18px;">
+                <div>
+                    <span class="eyebrow">Moderation</span>
+                    <h3>Report Challenge</h3>
+                </div>
+            </div>
+            <p style="color:var(--muted);margin-bottom:14px;">Select a reason for reporting this challenge. Moderators will review it shortly.</p>
+            <div id="reportReasons" style="display:grid;gap:10px;margin-bottom:18px;"></div>
+            <button id="submitReportBtn" class="btn btn-primary btn-block" disabled>Submit Report</button>
+        </div>
+    </div>
+
+    <div id="confirmModal" class="modal">
+        <div class="modal-card confirm-card">
+            <button class="modal-close" aria-label="Close confirmation">&times;</button>
+            <div class="confirm-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <h3>Confirm Deletion</h3>
+            <p id="confirmMessage">Are you sure you want to remove this challenge from the board? This action cannot be undone.</p>
+            <div class="confirm-actions">
+                <button id="confirmCancelBtn" type="button" class="btn btn-light btn-small">Cancel</button>
+                <button id="confirmDeleteBtn" type="button" class="btn btn-danger btn-small">Confirm Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="site-footer">
+        <div class="container footer-inner">
+            <div>© 2026 CipherPoint</div>
+            <div class="footer-links">
+                <a href="terms.html">Terms of Service</a>
+                <a href="privacy.html">Privacy Policy</a>
+            </div>
+            <div>Secure OSINT lab infrastructure</div>
+        </div>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>

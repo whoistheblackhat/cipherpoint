@@ -1,0 +1,118 @@
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.ext.declarative import declarative_base
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from turso_client import is_turso_configured, connect_turso
+
+
+def _make_engine():
+    """Build engine - uses Turso HTTP API if configured, else DATABASE_URL."""
+    if is_turso_configured():
+        from sqlalchemy.pool import StaticPool
+        url = "sqlite:///:memory:"
+        creator = lambda: connect_turso(os.getenv("TURSO_URL"), os.getenv("TURSO_AUTH_TOKEN"))
+        return create_engine(
+            url,
+            creator=creator,
+            poolclass=StaticPool,
+            connect_args={"check_same_thread": False},
+            echo=False
+        )
+
+    _raw_url = os.getenv("DATABASE_URL", "sqlite:///./cipherpoint.db")
+    if _raw_url.startswith("postgres://"):
+        _raw_url = _raw_url.replace("postgres://", "postgresql://", 1)
+
+    return create_engine(
+        _raw_url,
+        connect_args={"check_same_thread": False} if _raw_url.startswith("sqlite") else {},
+        pool_pre_ping=True,
+        echo=False
+    )
+
+
+engine = _make_engine()
+IS_TURSO = is_turso_configured()
+IS_POSTGRES = not IS_TURSO and engine.url.get_backend_name().startswith("postgres")
+
+# Create session factory
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Base class for all models
+Base = declarative_base()
+
+# Dependency for FastAPI to get database session
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# Create all tables
+def init_db():
+    Base.metadata.create_all(bind=engine)
+    if IS_POSTGRES or IS_TURSO:
+        return  # Schema handled by create_all; migrations require Alembic for prod
+    with engine.begin() as conn:
+        user_columns = conn.execute(text("PRAGMA table_info(users)")).fetchall()
+        if not any(column[1] == "is_admin" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0 NOT NULL"))
+        if not any(column[1] == "bio" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN bio TEXT"))
+        if not any(column[1] == "avatar_url" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN avatar_url VARCHAR"))
+        if not any(column[1] == "notify_new_challenges" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN notify_new_challenges BOOLEAN DEFAULT 1 NOT NULL"))
+        if not any(column[1] == "notify_comments" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN notify_comments BOOLEAN DEFAULT 1 NOT NULL"))
+        if not any(column[1] == "notify_mentions" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN notify_mentions BOOLEAN DEFAULT 1 NOT NULL"))
+        if not any(column[1] == "hide_email" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN hide_email BOOLEAN DEFAULT 1 NOT NULL"))
+        if not any(column[1] == "public_profile" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN public_profile BOOLEAN DEFAULT 1 NOT NULL"))
+        if not any(column[1] == "telegram_chat_id" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN telegram_chat_id VARCHAR"))
+        if not any(column[1] == "telegram_notifications" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN telegram_notifications BOOLEAN DEFAULT 1 NOT NULL"))
+        if not any(column[1] == "telegram_connect_nonce" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN telegram_connect_nonce VARCHAR"))
+        if not any(column[1] == "telegram_connect_nonce_expires" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN telegram_connect_nonce_expires DATETIME"))
+        if not any(column[1] == "reset_token" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN reset_token VARCHAR"))
+        if not any(column[1] == "reset_token_expires" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN reset_token_expires DATETIME"))
+        if not any(column[1] == "login_otp_code" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN login_otp_code VARCHAR"))
+        if not any(column[1] == "login_otp_expires" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN login_otp_expires DATETIME"))
+        if not any(column[1] == "login_otp_attempts" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN login_otp_attempts INTEGER DEFAULT 0 NOT NULL"))
+        if not any(column[1] == "login_otp_username" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN login_otp_username VARCHAR"))
+        if not any(column[1] == "weekly_challenges_used" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN weekly_challenges_used INTEGER DEFAULT 0 NOT NULL"))
+        if not any(column[1] == "weekly_reset_at" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN weekly_reset_at DATETIME"))
+
+        challenge_columns = conn.execute(text("PRAGMA table_info(challenges)")).fetchall()
+        for column_name, default_sql in [
+            ("created_by", "INTEGER"),
+            ("status", "VARCHAR DEFAULT 'approved' NOT NULL"),
+            ("is_community", "BOOLEAN DEFAULT 0 NOT NULL"),
+            ("disclaimer_accepted", "BOOLEAN DEFAULT 0 NOT NULL"),
+            ("tags", "VARCHAR DEFAULT ''"),
+            ("report_count", "INTEGER DEFAULT 0 NOT NULL"),
+        ]:
+            if not any(column[1] == column_name for column in challenge_columns):
+                conn.execute(text(f"ALTER TABLE challenges ADD COLUMN {column_name} {default_sql}"))
+
+        comment_columns = conn.execute(text("PRAGMA table_info(comments)")).fetchall()
+        if comment_columns and not any(column[1] == "parent_id" for column in comment_columns):
+            conn.execute(text("ALTER TABLE comments ADD COLUMN parent_id INTEGER REFERENCES comments(id)"))

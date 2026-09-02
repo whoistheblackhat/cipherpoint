@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CipherPoint | Leaderboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body data-page="leaderboard">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="app-shell">
+        <aside class="sidebar-nav" id="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-mark-icon"><i class="fa-solid fa-user-secret"></i></div>
+                <div class="brand-text">CipherPoint</div>
+            </div>
+            <button id="sidebarToggle" class="sidebar-toggle" aria-label="Toggle navigation">
+                <i class="fa-solid fa-angle-left"></i>
+            </button>
+            <nav class="sidebar-links">
+                <a href="dashboard.html" class="sidebar-link">
+                    <i class="fa-solid fa-house"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="community.html" class="sidebar-link">
+                    <i class="fa-solid fa-users"></i>
+                    <span>Community</span>
+                </a>
+                <a href="leaderboard.html" class="sidebar-link active">
+                    <i class="fa-solid fa-trophy"></i>
+                    <span>Leaderboard</span>
+                </a>
+                <a href="profile.html" class="sidebar-link">
+                    <i class="fa-solid fa-user-astronaut"></i>
+                    <span>Profile</span>
+                </a>
+                <a href="settings.html" class="sidebar-link">
+                    <i class="fa-solid fa-gear"></i>
+                    <span>Settings</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <button id="logoutBtn" class="btn btn-light btn-small btn-block">
+                    <i class="fa-solid fa-right-from-bracket"></i> Sign Out
+                </button>
+            </div>
+        </aside>
+
+        <div class="app-main">
+            <header class="dashboard-header">
+                <div class="container dashboard-topbar">
+                    <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <div>
+                        <span class="eyebrow">Ranking</span>
+                        <h2 style="margin:0;">Top Analysts</h2>
+                    </div>
+                    <div class="dashboard-actions">
+                        <span id="currentUserBadge" class="user-pill"><i class="fa-solid fa-user"></i> <span id="currentUserLabel">Loading...</span></span>
+                    </div>
+                </div>
+            </header>
+
+            <main class="container leaderboard-shell">
+                <section class="leaderboard-stats">
+                    <div class="widget-card stat-card">
+                        <span class="meta-label">Your Rank</span>
+                        <strong id="yourRank">—</strong>
+                    </div>
+                    <div class="widget-card stat-card">
+                        <span class="meta-label">Your Points</span>
+                        <strong id="yourPoints">0</strong>
+                    </div>
+                    <div class="widget-card stat-card">
+                        <span class="meta-label">Your Solves</span>
+                        <strong id="yourSolves">0</strong>
+                    </div>
+                    <div class="widget-card stat-card">
+                        <span class="meta-label">Active Analysts</span>
+                        <strong id="totalAnalysts">0</strong>
+                    </div>
+                </section>
+
+                <section class="leaderboard-card">
+                    <div class="section-head">
+                        <div>
+                            <span class="eyebrow">Standings</span>
+                            <h2>Global Leaderboard</h2>
+                        </div>
+                        <div class="filter-row">
+                            <button class="filter-btn active" data-range="all">All Time</button>
+                        </div>
+                    </div>
+                    <div class="leaderboard-table-wrap">
+                        <table class="leaderboard-table">
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Analyst</th>
+                                    <th>Points</th>
+                                    <th>Solved</th>
+                                    <th>Badges</th>
+                                </tr>
+                            </thead>
+                            <tbody id="leaderboardBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <footer class="site-footer">
+        <div class="container footer-inner">
+            <div>© 2026 CipherPoint</div>
+            <div class="footer-links">
+                <a href="terms.html">Terms of Service</a>
+                <a href="privacy.html">Privacy Policy</a>
+            </div>
+            <div>Secure OSINT lab infrastructure</div>
+        </div>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>

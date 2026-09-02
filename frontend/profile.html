@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CipherPoint | Profile</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body data-page="profile">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="app-shell">
+        <aside class="sidebar-nav" id="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-mark-icon"><i class="fa-solid fa-user-secret"></i></div>
+                <div class="brand-text">CipherPoint</div>
+            </div>
+            <button id="sidebarToggle" class="sidebar-toggle" aria-label="Toggle navigation">
+                <i class="fa-solid fa-angle-left"></i>
+            </button>
+            <nav class="sidebar-links">
+                <a href="dashboard.html" class="sidebar-link">
+                    <i class="fa-solid fa-house"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="community.html" class="sidebar-link">
+                    <i class="fa-solid fa-users"></i>
+                    <span>Community</span>
+                </a>
+                <a href="leaderboard.html" class="sidebar-link">
+                    <i class="fa-solid fa-trophy"></i>
+                    <span>Leaderboard</span>
+                </a>
+                <a href="profile.html" class="sidebar-link active">
+                    <i class="fa-solid fa-user-astronaut"></i>
+                    <span>Profile</span>
+                </a>
+                <a href="settings.html" class="sidebar-link">
+                    <i class="fa-solid fa-gear"></i>
+                    <span>Settings</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <button id="logoutBtn" class="btn btn-light btn-small btn-block">
+                    <i class="fa-solid fa-right-from-bracket"></i> Sign Out
+                </button>
+            </div>
+        </aside>
+
+        <div class="app-main">
+            <header class="dashboard-header">
+                <div class="container dashboard-topbar">
+                    <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <div>
+                        <span class="eyebrow">Profile</span>
+                        <h2 style="margin:0;">My Profile</h2>
+                    </div>
+                </div>
+            </header>
+
+            <main class="container profile-shell">
+                <div class="profile-hero">
+                    <div class="profile-avatar-col">
+                        <div class="profile-avatar" id="profileAvatar">
+                            <i class="fa-solid fa-user-astronaut"></i>
+                        </div>
+                        <button id="editProfileBtn" class="btn btn-light btn-small" type="button">
+                            <i class="fa-solid fa-pen"></i> Edit Profile
+                        </button>
+                    </div>
+                    <div class="profile-info-col">
+                        <h1 id="profileUsername" class="profile-name">Loading...</h1>
+                        <p id="profileBio" class="profile-bio">No bio yet.</p>
+                        <div class="profile-meta-row">
+                            <div class="meta-chip">
+                                <span class="meta-label">Email</span>
+                                <strong id="profileEmail">-</strong>
+                            </div>
+                            <div class="meta-chip">
+                                <span class="meta-label">Coins</span>
+                                <strong id="profileCoins">0</strong>
+                            </div>
+                            <div class="meta-chip">
+                                <span class="meta-label">Rank</span>
+                                <strong id="profilePoints">0</strong>
+                            </div>
+                            <div class="meta-chip">
+                                <span class="meta-label">Solved</span>
+                                <strong id="profileSolved">0</strong>
+                            </div>
+                        </div>
+                        <div id="profileTags" class="tag-list"></div>
+                    </div>
+                </div>
+
+                <section class="profile-grid">
+                    <div class="profile-section">
+                        <div class="section-title"><i class="fa-solid fa-gift"></i> Daily Bonus</div>
+                        <p class="widget-copy">Maintain a daily habit and claim your active-case stipend.</p>
+                        <button id="bonusBtn" class="btn btn-primary btn-block">Claim 10 coins</button>
+                    </div>
+
+                    <div class="profile-section">
+                        <div class="section-title"><i class="fa-solid fa-trophy"></i> Badges</div>
+                        <div id="profileBadges" class="badge-list"></div>
+                    </div>
+
+                    <div class="profile-section">
+                        <div class="section-title"><i class="fa-solid fa-clock-rotate-left"></i> Case History</div>
+                        <div id="profileHistory" class="history-list"></div>
+                    </div>
+
+                    <div class="profile-section">
+                        <div class="section-title"><i class="fa-solid fa-pen-to-square"></i> Created Cases</div>
+                        <div id="profileCreated" class="history-list"></div>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <div id="editModal" class="modal">
+        <div class="modal-card large-card">
+            <button class="modal-close" aria-label="Close edit panel">&times;</button>
+            <div id="editDetails"></div>
+        </div>
+    </div>
+
+    <footer class="site-footer">
+        <div class="container footer-inner">
+            <div>© 2026 CipherPoint</div>
+            <div class="footer-links">
+                <a href="terms.html">Terms of Service</a>
+                <a href="privacy.html">Privacy Policy</a>
+            </div>
+            <div>Secure OSINT lab infrastructure</div>
+        </div>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CipherPoint | Secure Sign In</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body data-page="login">
+    <canvas id="networkCanvas" width="1920" height="1080" style="position:fixed;inset:0;width:100vw;height:100vh;z-index:0;pointer-events:none;display:block;"></canvas>
+    <div class="auth-container">
+        <div class="auth-left">
+            <div class="auth-left-content">
+                <div class="brand-mark-icon"><i class="fa-solid fa-user-secret"></i></div>
+                <div class="brand-text">CipherPoint</div>
+                <p class="auth-left-subtitle">Open Source Intelligence & Digital Forensics</p>
+            </div>
+        </div>
+        <div class="auth-right">
+            <div class="auth-form-wrapper">
+                <div class="auth-brand">
+                <div class="brand-mark-icon"><i class="fa-solid fa-user-secret"></i></div>
+                    <div>
+                        <span class="eyebrow">CipherPoint</span>
+                        <h2>Secure Access</h2>
+                    </div>
+                </div>
+
+<form id="loginForm" class="auth-form">
+                    <div class="field-wrap">
+                        <label for="loginUsername"><i class="fa-solid fa-user"></i> Username</label>
+                        <input id="loginUsername" type="text" placeholder="Enter username" required>
+                    </div>
+                    <div class="field-wrap">
+                        <label for="loginPassword"><i class="fa-solid fa-lock"></i> Password</label>
+                        <div class="password-field">
+                            <input id="loginPassword" type="password" placeholder="Enter password" required>
+                            <button type="button" class="password-toggle" aria-label="Toggle password visibility">
+                                <i class="fa-solid fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <label class="checkbox-wrap">
+                            <input type="checkbox" id="rememberMe">
+                            <span class="checkmark"></span>
+                            Remember me
+                        </label>
+                        <a href="#" class="forgot-link" id="forgotPasswordLink">Forgot password?</a>
+                    </div>
+                    <div class="cf-turnstile" data-sitekey="0x4AAAAAAElCm52gpvG95L4_" data-callback="onTurnstileSuccessLogin" data-theme="dark"></div>
+                    <input type="hidden" id="loginTurnstileToken" name="cf-turnstile-response">
+                    <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+                    <div id="loginMessage" class="form-message"></div>
+                    <div class="auth-divider"><span>or</span></div>
+                    <button type="button" class="btn btn-light btn-block" id="toggleOtpBtn">
+                        <i class="fa-brands fa-telegram"></i> Login with Telegram OTP
+                    </button>
+                </form>
+
+                <form id="otpLoginForm" class="auth-form" style="display:none;">
+                    <p style="color:var(--muted);font-size:0.9rem;margin-bottom:14px;">
+                        Enter your Telegram chat ID. We'll send a one-time code to your linked CipherPoint account.
+                    </p>
+                    <div class="field-wrap">
+                        <label for="otpChatId"><i class="fa-brands fa-telegram"></i> Telegram Chat ID</label>
+                        <input id="otpChatId" type="text" placeholder="e.g. 6260801966" inputmode="numeric">
+                    </div>
+                    <div class="cf-turnstile" data-sitekey="0x4AAAAAAElCm52gpvG95L4_" data-callback="onTurnstileSuccessOtp" data-theme="dark"></div>
+                    <input type="hidden" id="otpTurnstileToken">
+                    <button type="button" class="btn btn-primary btn-block" id="otpRequestBtn">
+                        <i class="fa-solid fa-paper-plane"></i> Send OTP to Telegram
+                    </button>
+                    <div id="otpRequestMessage" class="form-message"></div>
+
+                    <div id="otpVerifySection" style="display:none;margin-top:18px;">
+                        <div class="field-wrap">
+                            <label for="otpCodeInput"><i class="fa-solid fa-key"></i> Enter 6-digit OTP</label>
+                            <input id="otpCodeInput" type="text" placeholder="123456" maxlength="6" inputmode="numeric" pattern="[0-9]{6}">
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">Verify & Sign In</button>
+                        <div id="otpVerifyMessage" class="form-message"></div>
+                        <button type="button" class="btn btn-light btn-small btn-block" id="otpResendBtn" style="margin-top:8px;">
+                            <i class="fa-solid fa-rotate"></i> Resend OTP
+                        </button>
+                    </div>
+
+                    <button type="button" class="btn btn-light btn-block" id="otpBackToPasswordBtn" style="margin-top:14px;">
+                        <i class="fa-solid fa-arrow-left"></i> Back to Password Login
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="forgotPasswordModal" class="modal">
+        <div class="modal-card">
+            <button class="modal-close" aria-label="Close forgot password">&times;</button>
+            <div class="form-header" style="margin-bottom:18px;">
+                <div>
+                    <span class="eyebrow">Account Recovery</span>
+                    <h3>Reset Password</h3>
+                </div>
+            </div>
+            <p style="color:var(--muted);margin-bottom:14px;">Enter your username. If you have Telegram connected, a reset token will be sent there.</p>
+            <label>
+                <span>Username</span>
+                <input type="text" id="forgotPasswordUsername" placeholder="Your username">
+            </label>
+            <div id="forgotPasswordMessage" class="form-message" style="margin-top:12px;"></div>
+            <button type="button" class="btn btn-primary btn-block" id="sendResetTokenBtn">Send Reset Token</button>
+        </div>
+    </div>
+
+    <div id="resetPasswordModal" class="modal">
+        <div class="modal-card">
+            <button class="modal-close" aria-label="Close reset password">&times;</button>
+            <div class="form-header" style="margin-bottom:18px;">
+                <div>
+                    <span class="eyebrow">Account Recovery</span>
+                    <h3>Set New Password</h3>
+                </div>
+            </div>
+            <label>
+                <span>Reset Token (from Telegram)</span>
+                <input type="text" id="resetTokenInput" placeholder="Paste token from Telegram">
+            </label>
+            <label>
+                <span>New Password</span>
+                <input type="password" id="newPasswordReset" placeholder="At least 6 characters">
+            </label>
+            <div id="resetPasswordMessage" class="form-message" style="margin-top:12px;"></div>
+            <button type="button" class="btn btn-primary btn-block" id="confirmResetBtn">Reset Password</button>
+        </div>
+    </div>
+
+    <footer class="site-footer">
+        <div class="container footer-inner">
+            <div>© 2026 CipherPoint</div>
+            <div class="footer-links">
+                <a href="terms.html">Terms of Service</a>
+                <a href="privacy.html">Privacy Policy</a>
+            </div>
+            <div>Secure OSINT lab infrastructure</div>
+        </div>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>

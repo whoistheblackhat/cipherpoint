@@ -1,0 +1,70 @@
+# Docker build context ignore
+# Production image should only contain source + requirements
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# --- Virtual envs ---
+venv/
+.venv/
+env/
+ENV/
+
+# --- Secrets (injected at runtime via Render env vars) ---
+.env
+.env.local
+.env.*.local
+*.env
+
+# --- Local DB / data ---
+*.db
+*.sqlite
+*.sqlite3
+data/
+uploads/
+media/
+telegram_cache/
+
+# --- Git / VCS ---
+.git/
+.gitignore
+.gitattributes
+
+# --- Build / IDE ---
+.vscode/
+.idea/
+.DS_Store
+*.log
+dist/
+build/
+*.whl
+*.spec
+
+# --- Tests / dev artifacts ---
+tests/
+test_*.py
+*_test.py
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# --- Frontend (not needed in backend image) ---
+../frontend/
+../prompt.txt
+../DEPLOYMENT.md
+../render.yaml
+../README.md
+
+# --- Docker meta ---
+Dockerfile
+.dockerignore

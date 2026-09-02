@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CipherPoint | Community CTF</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body data-page="community">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="app-shell">
+        <aside class="sidebar-nav" id="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-mark-icon"><i class="fa-solid fa-user-secret"></i></div>
+                <div class="brand-text">CipherPoint</div>
+            </div>
+            <button id="sidebarToggle" class="sidebar-toggle" aria-label="Toggle navigation">
+                <i class="fa-solid fa-angle-left"></i>
+            </button>
+            <nav class="sidebar-links">
+                <a href="dashboard.html" class="sidebar-link">
+                    <i class="fa-solid fa-house"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="community.html" class="sidebar-link active">
+                    <i class="fa-solid fa-users"></i>
+                    <span>Community</span>
+                </a>
+                <a href="leaderboard.html" class="sidebar-link">
+                    <i class="fa-solid fa-trophy"></i>
+                    <span>Leaderboard</span>
+                </a>
+                <a href="profile.html" class="sidebar-link">
+                    <i class="fa-solid fa-user-astronaut"></i>
+                    <span>Profile</span>
+                </a>
+                <a href="settings.html" class="sidebar-link">
+                    <i class="fa-solid fa-gear"></i>
+                    <span>Settings</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <button id="logoutBtn" class="btn btn-light btn-small btn-block">
+                    <i class="fa-solid fa-right-from-bracket"></i> Sign Out
+                </button>
+            </div>
+        </aside>
+
+        <div class="app-main">
+            <header class="dashboard-header">
+                <div class="container dashboard-topbar">
+                    <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <div>
+                        <span class="eyebrow">Community</span>
+                        <h2 style="margin:0;">Community CTF Board</h2>
+                    </div>
+                    <div class="dashboard-actions">
+                        <button id="communityCreateBtn" class="btn btn-primary btn-small">
+                            <i class="fa-solid fa-plus"></i> Create CTF
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <main class="container community-shell">
+                <div class="community-toolbar" style="margin-bottom:18px;">
+                    <div class="filter-row">
+                        <button class="community-sort active" data-sort="newest" type="button">Newest</button>
+                        <button class="community-sort" data-sort="popular" type="button">Popular</button>
+                        <button class="community-sort" data-sort="reward" type="button">Reward</button>
+                    </div>
+                </div>
+
+                <div id="communityFeed" class="community-feed"></div>
+            </main>
+        </div>
+    </div>
+
+    <div id="communityModal" class="modal">
+        <div class="modal-card large-card">
+            <button class="modal-close" aria-label="Close community panel">&times;</button>
+            <form id="communityForm" class="community-form">
+                <div class="form-header">
+                    <div>
+                        <span class="eyebrow">Publish</span>
+                        <h3>Create a Community CTF</h3>
+                    </div>
+                </div>
+
+                <div class="field-grid">
+                    <label>
+                        <span>Challenge Title</span>
+                        <input type="text" id="communityTitle" name="title" required>
+                    </label>
+                    <label>
+                        <span>Category</span>
+                        <input type="text" id="communityCategory" name="category" placeholder="OSINT, Web, Forensics" required>
+                    </label>
+                    <label>
+                        <span>Difficulty</span>
+                        <select id="communityDifficulty" name="difficulty" required>
+                            <option value="Easy">Easy</option>
+                            <option value="Medium">Medium</option>
+                            <option value="Hard">Hard</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span>Reward Coins</span>
+                        <input type="number" id="communityReward" name="points_reward" min="10" value="100" required>
+                    </label>
+                </div>
+
+                <label>
+                    <span>Description</span>
+                    <textarea id="communityDescription" name="description" rows="4" required></textarea>
+                </label>
+
+                <div class="field-grid">
+                    <label>
+                        <span>Media Upload (Image/Video - Max 10s)</span>
+                        <input type="file" id="communityMedia" name="media" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,video/quicktime" required>
+                        <small style="display:block; margin-top:0.5rem; color:#10b981;">Supported: JPG, PNG, GIF, WebP, MP4, WebM</small>
+                    </label>
+                    <div id="mediaUploadStatus" style="padding:1rem; display:none;">
+                        <div class="progress-bar" style="height:4px; background:#1f2937; border-radius:2px; overflow:hidden;">
+                            <div id="mediaUploadProgress" style="height:100%; width:0%; background:#10b981; transition:width 0.3s;"></div>
+                        </div>
+                        <small id="mediaUploadText" style="display:block; margin-top:0.5rem; color:#9ca3af;"></small>
+                    </div>
+                    <input type="hidden" id="communityFileId" name="telegram_file_id" value="">
+                </div>
+
+                <div class="field-grid">
+                    <label>
+                        <span>Correct Flag</span>
+                        <input type="text" id="communityFlag" name="correct_flag" required>
+                    </label>
+                    <label>
+                        <span>Hint 1</span>
+                        <input type="text" id="communityHint1" name="hint_1" placeholder="Optional">
+                    </label>
+                    <label>
+                        <span>Hint 2</span>
+                        <input type="text" id="communityHint2" name="hint_2" placeholder="Optional">
+                    </label>
+                </div>
+
+                <label>
+                    <span>Tags</span>
+                    <input type="text" id="communityTags" name="tags" placeholder="osint, geo, reverse-image">
+                </label>
+
+                <div class="policy-box">
+                    <strong>Community safety policy</strong>
+                    <p>This platform does not allow personal identities, private contact details, doxxing, home addresses, phone numbers, social identities, or any sensitive personal information. Violations will be removed immediately and accounts may be suspended without warning.</p>
+                    <label class="policy-check">
+                        <input type="checkbox" id="communityDisclaimer" name="disclaimer_accepted" required>
+                        <span>I accept the <a href="terms.html" target="_blank">platform disclaimer</a> and confirm the challenge does not contain any personal or private identity data.</span>
+                    </label>
+                </div>
+
+                <div id="communityFormMessage" class="form-message"></div>
+                <button type="submit" class="btn btn-primary btn-block">Publish Community CTF</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <div id="reportModal" class="modal">
+        <div class="modal-card">
+            <button class="modal-close" aria-label="Close report panel">&times;</button>
+            <div class="form-header" style="margin-bottom:18px;">
+                <div>
+                    <span class="eyebrow">Moderation</span>
+                    <h3>Report Challenge</h3>
+                </div>
+            </div>
+            <p style="color:var(--muted);margin-bottom:14px;">Select a reason for reporting this challenge. Moderators will review it shortly.</p>
+            <div id="reportReasons" style="display:grid;gap:10px;margin-bottom:18px;"></div>
+            <button id="submitReportBtn" class="btn btn-primary btn-block" disabled>Submit Report</button>
+        </div>
+    </div>
+
+    <div id="confirmModal" class="modal">
+        <div class="modal-card confirm-card">
+            <button class="modal-close" aria-label="Close confirmation">&times;</button>
+            <div class="confirm-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <h3>Confirm Deletion</h3>
+            <p id="confirmMessage">Are you sure you want to remove this challenge from the board? This action cannot be undone.</p>
+            <div class="confirm-actions">
+                <button id="confirmCancelBtn" type="button" class="btn btn-light btn-small">Cancel</button>
+                <button id="confirmDeleteBtn" type="button" class="btn btn-danger btn-small">Confirm Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="site-footer">
+        <div class="container footer-inner">
+            <div>© 2026 CipherPoint</div>
+            <div class="footer-links">
+                <a href="terms.html">Terms of Service</a>
+                <a href="privacy.html">Privacy Policy</a>
+            </div>
+            <div>Secure OSINT lab infrastructure</div>
+        </div>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CipherPoint | Settings</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body data-page="settings">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="app-shell">
+        <aside class="sidebar-nav" id="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-mark-icon"><i class="fa-solid fa-user-secret"></i></div>
+                <div class="brand-text">CipherPoint</div>
+            </div>
+            <button id="sidebarToggle" class="sidebar-toggle" aria-label="Toggle navigation">
+                <i class="fa-solid fa-angle-left"></i>
+            </button>
+            <nav class="sidebar-links">
+                <a href="dashboard.html" class="sidebar-link">
+                    <i class="fa-solid fa-house"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="community.html" class="sidebar-link">
+                    <i class="fa-solid fa-users"></i>
+                    <span>Community</span>
+                </a>
+                <a href="leaderboard.html" class="sidebar-link">
+                    <i class="fa-solid fa-trophy"></i>
+                    <span>Leaderboard</span>
+                </a>
+                <a href="profile.html" class="sidebar-link">
+                    <i class="fa-solid fa-user-astronaut"></i>
+                    <span>Profile</span>
+                </a>
+                <a href="settings.html" class="sidebar-link active">
+                    <i class="fa-solid fa-gear"></i>
+                    <span>Settings</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <button id="logoutBtn" class="btn btn-light btn-small btn-block">
+                    <i class="fa-solid fa-right-from-bracket"></i> Sign Out
+                </button>
+            </div>
+        </aside>
+
+        <div class="app-main">
+            <header class="dashboard-header">
+                <div class="container dashboard-topbar">
+                    <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <div>
+                        <span class="eyebrow">Settings</span>
+                        <h2 style="margin:0;">Account Settings</h2>
+                    </div>
+                </div>
+            </header>
+
+            <main class="container profile-shell">
+                <div class="settings-grid">
+                    <section class="settings-section">
+                        <div class="section-title"><i class="fa-solid fa-key"></i> Change Password</div>
+                        <form id="passwordForm" class="settings-form">
+                            <label>
+                                <span>Current Password</span>
+                                <input type="password" id="currentPassword" required>
+                            </label>
+                            <label>
+                                <span>New Password</span>
+                                <input type="password" id="newPassword" required>
+                            </label>
+                            <label>
+                                <span>Confirm New Password</span>
+                                <input type="password" id="confirmNewPassword" required>
+                            </label>
+                            <button type="submit" class="btn btn-primary btn-block">Update Password</button>
+                            <div id="passwordMessage" class="form-message"></div>
+                        </form>
+                    </section>
+
+                    <section class="settings-section">
+                        <div class="section-title"><i class="fa-brands fa-telegram"></i> Telegram Notifications</div>
+                        <p class="widget-copy" style="margin-bottom:14px;">Connect your Telegram account to receive security alerts, password resets, and case notifications directly on Telegram.</p>
+                        <div id="telegramConnectStatus" class="telegram-status"></div>
+                        <div id="telegramConnectActions" class="telegram-actions">
+                            <button id="connectTelegramBtn" class="btn btn-primary btn-block" type="button">Connect Telegram</button>
+                            <button id="disconnectTelegramBtn" class="btn btn-light btn-block" type="button" style="display:none;">Disconnect Telegram</button>
+                        </div>
+                        <div id="telegramConnectMessage" class="form-message"></div>
+                    </section>
+
+                    <section class="settings-section">
+                        <div class="section-title"><i class="fa-solid fa-bell"></i> Notifications</div>
+                        <form id="notificationsForm" class="settings-form">
+                            <label class="toggle-row">
+                                <span>Telegram notifications for new challenges</span>
+                                <input type="checkbox" id="notifyNewChallenges" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <label class="toggle-row">
+                                <span>Telegram notifications for comments on my cases</span>
+                                <input type="checkbox" id="notifyComments" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <label class="toggle-row">
+                                <span>Telegram notifications for mentions</span>
+                                <input type="checkbox" id="notifyMentions" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <button type="submit" class="btn btn-primary btn-block">Save Preferences</button>
+                            <div id="notificationsMessage" class="form-message"></div>
+                        </form>
+                    </section>
+
+                    <section class="settings-section">
+                        <div class="section-title"><i class="fa-solid fa-eye"></i> Privacy</div>
+                        <form id="privacyForm" class="settings-form">
+                            <label class="toggle-row">
+                                <span>Hide my email from leaderboard</span>
+                                <input type="checkbox" id="hideEmail" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <label class="toggle-row">
+                                <span>Make my profile visible to others</span>
+                                <input type="checkbox" id="publicProfile" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <button type="submit" class="btn btn-primary btn-block">Save Privacy Settings</button>
+                            <div id="privacyMessage" class="form-message"></div>
+                        </form>
+                    </section>
+
+                    <section class="settings-section danger-zone">
+                        <div class="section-title"><i class="fa-solid fa-triangle-exclamation"></i> Danger Zone</div>
+                        <p class="widget-copy" style="margin-bottom:14px;">Once you delete your account, all your data will be permanently removed. This action cannot be undone.</p>
+                        <button id="deleteAccountBtn" class="btn btn-danger btn-block">Delete Account Permanently</button>
+                    </section>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <div id="confirmModal" class="modal">
+        <div class="modal-card confirm-card">
+            <button class="modal-close" aria-label="Close confirmation">&times;</button>
+            <div class="confirm-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <h3>Delete Account?</h3>
+            <p id="confirmMessage">This will permanently delete your account, all progress, badges, and created challenges. This action cannot be undone.</p>
+            <div class="confirm-actions">
+                <button id="confirmCancelBtn" type="button" class="btn btn-light btn-small">Cancel</button>
+                <button id="confirmDeleteBtn" type="button" class="btn btn-danger btn-small">Yes, Delete Forever</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <footer class="site-footer">
+        <div class="container footer-inner">
+            <div>© 2026 CipherPoint</div>
+            <div class="footer-links">
+                <a href="terms.html">Terms of Service</a>
+                <a href="privacy.html">Privacy Policy</a>
+            </div>
+            <div>Secure OSINT lab infrastructure</div>
+        </div>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>

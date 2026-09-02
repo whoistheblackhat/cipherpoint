@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CipherPoint | Challenge Detail</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body data-page="challenge-detail">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="app-shell">
+        <aside class="sidebar-nav" id="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-mark-icon"><i class="fa-solid fa-user-secret"></i></div>
+                <div class="brand-text">CipherPoint</div>
+            </div>
+            <button id="sidebarToggle" class="sidebar-toggle" aria-label="Toggle navigation">
+                <i class="fa-solid fa-angle-left"></i>
+            </button>
+            <nav class="sidebar-links">
+                <a href="dashboard.html" class="sidebar-link">
+                    <i class="fa-solid fa-house"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="community.html" class="sidebar-link">
+                    <i class="fa-solid fa-users"></i>
+                    <span>Community</span>
+                </a>
+                <a href="leaderboard.html" class="sidebar-link">
+                    <i class="fa-solid fa-trophy"></i>
+                    <span>Leaderboard</span>
+                </a>
+                <a href="profile.html" class="sidebar-link">
+                    <i class="fa-solid fa-user-astronaut"></i>
+                    <span>Profile</span>
+                </a>
+                <a href="settings.html" class="sidebar-link">
+                    <i class="fa-solid fa-gear"></i>
+                    <span>Settings</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <button id="logoutBtn" class="btn btn-light btn-small btn-block">
+                    <i class="fa-solid fa-right-from-bracket"></i> Sign Out
+                </button>
+            </div>
+        </aside>
+
+        <div class="app-main">
+            <header class="dashboard-header">
+                <div class="container dashboard-topbar">
+                    <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <a href="dashboard.html" style="text-decoration:none;color:inherit;">
+                        <div>
+                            <span class="eyebrow">Case Detail</span>
+                            <h2 id="detailPageTitle" style="margin:0;">Loading...</h2>
+                        </div>
+                    </a>
+                </div>
+            </header>
+
+            <main class="container challenge-shell">
+                <div id="detailLoading" class="loading">Loading case details...</div>
+                <div id="detailError" class="loading" style="display:none;color:var(--danger);"></div>
+
+                <div id="detailContent" style="display:none;">
+                    <div class="challenge-detail-card">
+                        <div class="modal-header-bar">
+                            <div class="modal-meta-left">
+                                 <div class="card-category-icon"><i class="fa-solid fa-user-secret"></i></div>
+                                <span class="card-category-name" id="detailCategory">r/OSINT</span>
+                                <span class="card-time-ago" id="detailTime">• Today</span>
+                                <span class="card-category-badge" id="detailDifficulty">Easy</span>
+                            </div>
+                            <div class="card-meta-right">
+                                <div class="challenge-options-dropdown" id="challengeOptionsMenu">
+                                    <button class="card-options-btn" type="button" aria-label="More options" onclick="toggleOptionsMenu()">
+                                        <i class="fa-solid fa-ellipsis"></i>
+                                    </button>
+                                    <div class="dropdown-menu" id="optionsDropdown" style="display:none;">
+                                        <button class="dropdown-item" onclick="shareCurrentChallenge()">
+                                            <i class="fa-solid fa-share"></i> Share
+                                        </button>
+                                        <button class="dropdown-item" id="reportOptionBtn" onclick="reportCurrentChallenge()">
+                                            <i class="fa-solid fa-flag"></i> Report
+                                        </button>
+                                        <button class="dropdown-item dropdown-danger" id="deleteOptionBtn" onclick="deleteCurrentChallenge()" style="display:none;">
+                                            <i class="fa-solid fa-trash"></i> Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="modal-title" id="detailTitle">Challenge Title</div>
+
+                        <div class="modal-media" id="detailMedia"></div>
+
+                        <div class="modal-description" id="detailDescription"></div>
+
+                        <div class="modal-meta-grid" id="detailMetaGrid">
+                            <div class="modal-meta-card">
+                                <span class="meta-label">Reward</span>
+                                <strong id="detailReward">0 Coins</strong>
+                            </div>
+                            <div class="modal-meta-card">
+                                <span class="meta-label">Solved</span>
+                                <strong id="detailSolved">0 Analysts</strong>
+                            </div>
+                            <div class="modal-meta-card">
+                                <span class="meta-label">Created</span>
+                                <strong id="detailCreated">Today</strong>
+                            </div>
+                        </div>
+
+                        <div class="modal-action-bar">
+                            <button class="vote-pill" type="button">
+                                <span class="vote-arrow"><i class="fa-solid fa-arrow-up"></i></span>
+                                <span class="vote-count" id="detailVotes">0</span>
+                                <span class="vote-arrow"><i class="fa-solid fa-arrow-down"></i></span>
+                            </button>
+                            <a class="action-pill" href="#" id="detailCommentLink">
+                                <i class="fa-solid fa-comment"></i> <span id="detailCommentCount">0</span> Comments
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="challenge-detail-extra">
+                        <div class="modal-section">
+                            <h4><i class="fa-solid fa-lightbulb"></i> Hints</h4>
+                            <div id="detailHints"></div>
+                        </div>
+
+                        <div class="modal-section">
+                            <h4><i class="fa-solid fa-flag"></i> Submit Flag</h4>
+                            <div class="flag-submission">
+                                <input type="text" id="flagInput" class="flag-input" placeholder="Enter your answer/flag...">
+                                <button class="submit-flag-btn" type="button" onclick="submitFlagFromDetail()">Submit</button>
+                            </div>
+                            <div id="flagMessage" class="form-message" style="margin-top:10px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <div id="reportModal" class="modal">
+        <div class="modal-card">
+            <button class="modal-close" aria-label="Close report panel">&times;</button>
+            <div class="form-header" style="margin-bottom:18px;">
+                <div>
+                    <span class="eyebrow">Moderation</span>
+                    <h3>Report Challenge</h3>
+                </div>
+            </div>
+            <p style="color:var(--muted);margin-bottom:14px;">Select a reason for reporting this challenge. Moderators will review it shortly.</p>
+            <div id="reportReasons" style="display:grid;gap:10px;margin-bottom:18px;"></div>
+            <button id="submitReportBtn" class="btn btn-primary btn-block" disabled>Submit Report</button>
+        </div>
+    </div>
+
+    <div id="confirmModal" class="modal">
+        <div class="modal-card confirm-card">
+            <button class="modal-close" aria-label="Close confirmation">&times;</button>
+            <div class="confirm-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <h3>Confirm Deletion</h3>
+            <p id="confirmMessage">Are you sure you want to remove this challenge from the board? This action cannot be undone.</p>
+            <div class="confirm-actions">
+                <button id="confirmCancelBtn" type="button" class="btn btn-light btn-small">Cancel</button>
+                <button id="confirmDeleteBtn" type="button" class="btn btn-danger btn-small">Confirm Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="site-footer">
+        <div class="container footer-inner">
+            <div>© 2026 CipherPoint</div>
+            <div class="footer-links">
+                <a href="terms.html">Terms of Service</a>
+                <a href="privacy.html">Privacy Policy</a>
+            </div>
+            <div>Secure OSINT lab infrastructure</div>
+        </div>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CipherPoint | Intelligence Platform</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body data-page="landing">
+    <canvas id="networkCanvas" width="1920" height="1080" style="position:fixed;inset:0;width:100vw;height:100vh;z-index:0;pointer-events:none;display:block;"></canvas>
+    <header class="site-header">
+        <nav class="topbar container">
+        <div class="brand-wrap">
+            <div class="brand-mark-icon"><i class="fa-solid fa-user-secret"></i></div>
+            <div class="brand-text">CipherPoint</div>
+        </div>
+            <div class="top-links">
+                <a href="#platform">Platform</a>
+                <a href="#workflow">Workflow</a>
+                <a href="#intel-lab">Intel Lab</a>
+            </div>
+            <div class="top-actions">
+                <a class="btn btn-light" href="login.html">Sign In</a>
+                <a class="btn btn-primary" href="signup.html">Create Account</a>
+            </div>
+        </nav>
+    </header>
+
+    <main>
+        <section class="hero container">
+            <div class="hero-copy">
+                <span class="eyebrow">Open Source Intelligence & Digital Forensics</span>
+                <h1>Investigate. Validate. Escalate.</h1>
+                <p>
+                    CipherPoint is a secure intelligence workspace where analysts solve OSINT,
+                    geolocation and forensic challenges through evidence-backed workflows and ranked casework.
+                </p>
+                <div class="cta-row">
+                    <a class="btn btn-primary" href="signup.html">Join the Network</a>
+                    <a class="btn btn-light" href="login.html">Access Console</a>
+                </div>
+                <div class="hero-stats">
+                    <div>
+                        <strong>12K+</strong>
+                        <span>Analyst sessions</span>
+                    </div>
+                    <div>
+                        <strong>340</strong>
+                        <span>Case studies</span>
+                    </div>
+                    <div>
+                        <strong>94%</strong>
+                        <span>Resolution rate</span>
+                    </div>
+                </div>
+            </div>
+            <div class="hero-panel">
+                <div class="panel-window">
+                    <div class="window-header">
+                        <span></span><span></span><span></span>
+                    </div>
+                    <div class="window-body">
+                        <div class="signal-item">
+                            <label>Active Case</label>
+                            <strong>GeoTrace: Coastal Relay</strong>
+                        </div>
+                        <div class="signal-item">
+                            <label>Evidence Trail</label>
+                            <strong>3 artifacts validated</strong>
+                        </div>
+                        <div class="signal-item signal-success">
+                            <label>Analyst Status</label>
+                            <strong>Ready for escalation</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="platform" class="feature-section container">
+            <div class="section-header">
+                <span class="eyebrow">Platform Capabilities</span>
+                <h2>Designed for disciplined intelligence work.</h2>
+            </div>
+            <div class="features-grid">
+                <article class="feature-card">
+                    <div class="feature-icon"><i class="fa-solid fa-magnifying-glass-chart"></i></div>
+                    <h3>OSINT Casework</h3>
+                    <p>Process public records, image evidence and social metadata in a controlled, evidence-first workflow.</p>
+                </article>
+                <article class="feature-card">
+                    <div class="feature-icon"><i class="fa-solid fa-location-dot"></i></div>
+                    <h3>Geolocation</h3>
+                    <p>Cross-reference EXIF data, infrastructure clues and map coordinates to isolate activity.</p>
+                </article>
+                <article class="feature-card">
+                    <div class="feature-icon"><i class="fa-solid fa-video"></i></div>
+                    <h3>Media Forensics</h3>
+                    <p>Examine metadata, sequencing and altered assets to verify authenticity across video and imagery.</p>
+                </article>
+                <article class="feature-card">
+                    <div class="feature-icon"><i class="fa-solid fa-shield-halved"></i></div>
+                    <h3>Secure Workflow</h3>
+                    <p>Role-bound access, persistent JWT session checks and protected profile pipelines for every investigation.</p>
+                </article>
+            </div>
+        </section>
+
+        <section class="badge-section container">
+            <div class="section-header">
+                <span class="eyebrow">Badge System</span>
+                <h2>Earn recognition for disciplined intelligence work.</h2>
+            </div>
+            <div id="badgeShowcase" class="badge-showcase"></div>
+        </section>
+
+        <section id="workflow" class="workflow container">
+            <div class="section-header narrow">
+                <span class="eyebrow">Operational Flow</span>
+                <h2>From signal to verified conclusion.</h2>
+            </div>
+            <div class="timeline">
+                <div class="timeline-step">
+                    <span class="step-count">01</span>
+                    <div>
+                        <h3>Collect Evidence</h3>
+                        <p>Receive case briefings, media artifacts and investigative objectives.</p>
+                    </div>
+                </div>
+                <div class="timeline-step">
+                    <span class="step-count">02</span>
+                    <div>
+                        <h3>Trace & Correlate</h3>
+                        <p>Analyze metadata, public records and related indicators to form a coherent timeline.</p>
+                    </div>
+                </div>
+                <div class="timeline-step">
+                    <span class="step-count">03</span>
+                    <div>
+                        <h3>Submit Finding</h3>
+                        <p>Submit answer keys, unlock hints and earn recognition through verified case completion.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="intel-lab" class="panel-strip container">
+            <div class="panel-box">
+                <div>
+                    <span class="eyebrow">Trusted by modern intelligence teams</span>
+                    <h3>Professional investigation infrastructure without compromise.</h3>
+                </div>
+                <a class="btn btn-primary" href="signup.html">Build Your Analyst Profile</a>
+            </div>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <div class="container footer-inner">
+            <div>© 2026 CipherPoint</div>
+            <div class="footer-links">
+                <a href="terms.html">Terms of Service</a>
+                <a href="privacy.html">Privacy Policy</a>
+            </div>
+            <div>Secure OSINT lab infrastructure</div>
+        </div>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -247,16 +247,22 @@ def ensure_admin_user():
     try:
         admin_username = os.getenv("ADMIN_USERNAME", "admin").strip() or "admin"
         admin_email = os.getenv("ADMIN_EMAIL", "admin@cipherpoint.com").strip() or "admin@cipherpoint.com"
+        admin_password = os.getenv("ADMIN_PASSWORD", "").strip()
+
         existing = db.query(User).filter(User.username == admin_username).first()
         if existing:
             if not existing.is_admin:
                 existing.is_admin = True
             if admin_email and existing.email != admin_email:
                 existing.email = admin_email
+            if admin_password:
+                if len(admin_password) < 12:
+                    raise RuntimeError("ADMIN_PASSWORD must be at least 12 characters")
+                if not verify_password(admin_password, existing.password_hash):
+                    existing.password_hash = hash_password(admin_password)
             db.commit()
             return
 
-        admin_password = os.getenv("ADMIN_PASSWORD", "").strip()
         if not admin_password:
             message = "ADMIN_PASSWORD must be configured before creating the initial admin account"
             if IS_PRODUCTION:

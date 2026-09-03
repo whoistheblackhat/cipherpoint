@@ -108,6 +108,25 @@ class TursoConnection:
         affected = body.get("affected_row_count", 0) or 0
         return cols, rows, affected
 
+    @staticmethod
+    def _extract_result(response: dict) -> dict:
+        """Return the statement response or raise the server-side SQL error."""
+        results = response.get("results")
+        if not isinstance(results, list) or not results:
+            raise TursoError(f"Invalid Turso pipeline response: {response}")
+
+        item = results[0] or {}
+        result = item.get("response")
+        if isinstance(result, dict):
+            return result
+
+        error = item.get("error") or response.get("error")
+        if isinstance(error, dict):
+            message = error.get("message") or error.get("code") or str(error)
+        else:
+            message = str(error or item)
+        raise TursoError(f"Turso statement failed: {message}")
+
     def cursor(self):
         return TursoCursor(self)
 
@@ -246,7 +265,7 @@ class TursoCursor:
 
         with self.conn._lock:
             response = self.conn._pipeline([{"type": "execute", "stmt": {"sql": sql_text}}])
-            result = response["results"][0]["response"]
+            result = self.conn._extract_result(response)
             body = result.get("result", {}) or {}
 
             if is_query:
@@ -272,11 +291,12 @@ class TursoCursor:
         return getattr(self, "_lastrowid", None)
 
     def executemany(self, sql: str, seq_of_params: Iterable[Iterable]):
+        params_list = list(seq_of_params)
         with self.conn._lock:
-            for params in seq_of_params:
+            for params in params_list:
                 sql_text, _ = self._bind(sql, params)
                 self.conn._pipeline([{"type": "execute", "stmt": {"sql": sql_text}}])
-        self._affected = len(list(seq_of_params)) if not isinstance(seq_of_params, list) else len(seq_of_params)
+        self._affected = len(params_list)
         return self
 
     def fetchone(self):

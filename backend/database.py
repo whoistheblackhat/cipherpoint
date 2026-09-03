@@ -96,6 +96,10 @@ def init_db():
             conn.execute(text("ALTER TABLE users ADD COLUMN login_otp_attempts INTEGER DEFAULT 0 NOT NULL"))
         if not any(column[1] == "login_otp_username" for column in user_columns):
             conn.execute(text("ALTER TABLE users ADD COLUMN login_otp_username VARCHAR"))
+        if not any(column[1] == "login_otp_requested_at" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN login_otp_requested_at DATETIME"))
+        if not any(column[1] == "daily_bonus_claimed_at" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN daily_bonus_claimed_at DATETIME"))
         if not any(column[1] == "weekly_challenges_used" for column in user_columns):
             conn.execute(text("ALTER TABLE users ADD COLUMN weekly_challenges_used INTEGER DEFAULT 0 NOT NULL"))
         if not any(column[1] == "weekly_reset_at" for column in user_columns):

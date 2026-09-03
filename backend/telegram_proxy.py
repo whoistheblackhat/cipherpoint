@@ -370,8 +370,13 @@ def _resolve_report(db: Session, report_id: int, action: str):
     elif action == "ban":
         if challenge:
             challenge.status = "removed"
-        ban = UserBan(user_id=report.reporter_id, reason="Report violation", banned_by=0)
-        db.add(ban)
+        existing_ban = db.query(UserBan).filter(UserBan.user_id == report.reporter_id).first()
+        if not existing_ban:
+            admin = db.query(User).filter(User.is_admin == True).order_by(User.id.asc()).first()
+            if not admin:
+                send_telegram_message(TELEGRAM_ADMIN_CHAT_ID, "❌ No admin account available to record the ban.")
+                return
+            db.add(UserBan(user_id=report.reporter_id, reason="Report violation", banned_by=admin.id))
         report.status = "resolved"
         db.commit()
         send_telegram_message(TELEGRAM_ADMIN_CHAT_ID, f"🚫 Report #{report_id} resolved with ban.")

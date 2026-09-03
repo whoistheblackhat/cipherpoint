@@ -287,7 +287,17 @@ def purge_expired_community_challenges():
         for c in expired:
             print(f"[EXPIRY] Purging community CTF #{c.id} '{c.title}' (created {c.created_at})")
 
-        deleted_comments = db.query(Comment).filter(Comment.challenge_id.in_(expired_ids)).delete(synchronize_session=False)
+        expired_comment_ids = [
+            row[0] for row in db.query(Comment.id).filter(Comment.challenge_id.in_(expired_ids)).all()
+        ]
+        deleted_comments = 0
+        if expired_comment_ids:
+            db.query(Comment).filter(
+                Comment.challenge_id.in_(expired_ids)
+            ).update({Comment.parent_id: None}, synchronize_session=False)
+            deleted_comments += db.query(Comment).filter(
+                Comment.id.in_(expired_comment_ids)
+            ).delete(synchronize_session=False)
         deleted_hints = db.query(UnlockedHint).filter(UnlockedHint.challenge_id.in_(expired_ids)).delete(synchronize_session=False)
         deleted_solves = db.query(SolvedChallenge).filter(SolvedChallenge.challenge_id.in_(expired_ids)).delete(synchronize_session=False)
         deleted_reports = db.query(ChallengeReport).filter(ChallengeReport.challenge_id.in_(expired_ids)).delete(synchronize_session=False)
@@ -621,11 +631,6 @@ def login_otp_request(payload: OtpLoginRequest, request: Request, db: Session = 
     user.login_otp_code = otp
     user.login_otp_expires = now + timedelta(seconds=OTP_VALID_SECONDS)
     user.login_otp_attempts = 0
-    if not hasattr(user, "login_otp_requested_at"):
-        try:
-            db.execute(text("ALTER TABLE users ADD COLUMN login_otp_requested_at DATETIME"))
-        except Exception:
-            pass
     user.login_otp_requested_at = now
     db.commit()
 
@@ -921,12 +926,45 @@ def delete_account(user_id: int = Depends(verify_token), db: Session = Depends(g
     db.query(SolvedChallenge).filter(SolvedChallenge.user_id == user_id).delete(synchronize_session=False)
     db.query(UnlockedHint).filter(UnlockedHint.user_id == user_id).delete(synchronize_session=False)
     db.query(ChallengeReport).filter(ChallengeReport.reporter_id == user_id).delete(synchronize_session=False)
-    db.query(Comment).filter(Comment.user_id == user_id).delete(synchronize_session=False)
+    user_comment_ids = [
+        row[0] for row in db.query(Comment.id).filter(Comment.user_id == user_id).all()
+    ]
+    if user_comment_ids:
+        db.query(Comment).filter(Comment.parent_id.in_(user_comment_ids)).update(
+            {Comment.parent_id: None}, synchronize_session=False
+        )
+        db.query(Comment).filter(Comment.id.in_(user_comment_ids)).delete(synchronize_session=False)
+    db.query(ChallengeReport).filter(ChallengeReport.resolved_by == user_id).update(
+        {ChallengeReport.resolved_by: None}, synchronize_session=False
+    )
+    db.query(UserBan).filter(
+        (UserBan.user_id == user_id) | (UserBan.banned_by == user_id)
+    ).delete(synchronize_session=False)
 
     db.delete(user)
     db.commit()
 
     return {"message": "Account deleted successfully"}
+
+
+@app.post("/api/profile/daily-bonus")
+def claim_daily_bonus(user_id: int = Depends(verify_token), db: Session = Depends(get_db)):
+    """Claim the daily bonus once per UTC day, enforced server-side."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    ensure_user_not_banned(user_id, db)
+
+    now = datetime.utcnow()
+    claimed_at = user.daily_bonus_claimed_at
+    if claimed_at and claimed_at.date() == now.date():
+        raise HTTPException(status_code=409, detail="Daily bonus already claimed today")
+
+    user.coins = (user.coins or 0) + 10
+    user.daily_bonus_claimed_at = now
+    db.commit()
+    db.refresh(user)
+    return {"message": "Daily bonus claimed", "coins_earned": 10, "total_coins": user.coins}
 
 
 @app.get("/api/settings/telegram/bot-info")
@@ -1496,6 +1534,7 @@ def unlock_hint(payload: HintRequest, user_id: int = Depends(verify_token), db: 
     challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found")
+    ensure_user_not_banned(user_id, db)
     if hint_number not in [1, 2]:
         raise HTTPException(status_code=400, detail="Invalid hint number")
     hint_cost = challenge.hint_1_cost if hint_number == 1 else challenge.hint_2_cost
@@ -1540,6 +1579,9 @@ def submit_flag(payload: FlagSubmitRequest, user_id: int = Depends(verify_token)
     challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found")
+    ensure_user_not_banned(user_id, db)
+    if challenge.status in {"rejected", "removed"}:
+        raise HTTPException(status_code=404, detail="Challenge not found")
     already_solved = db.query(SolvedChallenge).filter(
         (SolvedChallenge.user_id == user_id) &
         (SolvedChallenge.challenge_id == challenge_id)
@@ -1548,6 +1590,8 @@ def submit_flag(payload: FlagSubmitRequest, user_id: int = Depends(verify_token)
         return {"success": False, "message": "You already solved this challenge!"}
     if flag.strip().lower() == challenge.correct_flag.lower():
         user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
         user.coins += challenge.points_reward
         user.rank_points += challenge.points_reward
         solved_challenge = SolvedChallenge(user_id=user_id, challenge_id=challenge_id)

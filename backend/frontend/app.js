@@ -3230,11 +3230,37 @@ function claimDailyBonus() {
     return;
   }
 
-  currentUser.coins = Number(currentUser.coins || 0) + 10;
-  localStorage.setItem('user', JSON.stringify(currentUser));
-  localStorage.setItem(storageKey, todayKey);
-  setUserDisplayState();
-  showToast('🎁 +10 Coins claimed!', 'success');
+  const token = localStorage.getItem('token');
+  if (!token) {
+    showToast('⚠️ Session expired', 'error');
+    return;
+  }
+
+  const bonusButton = safeGetById('bonusBtn') || safeGetById('claimBonusBtn');
+  if (bonusButton) bonusButton.disabled = true;
+  fetch(`${API_BASE_URL}/profile/daily-bonus`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` }
+  })
+    .then(async (response) => {
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || 'Unable to claim daily bonus');
+      currentUser.coins = data.total_coins;
+      localStorage.setItem('user', JSON.stringify(currentUser));
+      localStorage.setItem(storageKey, todayKey);
+      setUserDisplayState();
+      showToast('🎁 +10 Coins claimed!', 'success');
+      updateBonusButtonState();
+    })
+    .catch((error) => {
+      showToast(`❌ ${error.message}`, 'error');
+      updateBonusButtonState();
+    })
+    .finally(() => {
+      if (bonusButton && localStorage.getItem(storageKey) !== todayKey) {
+        bonusButton.disabled = false;
+      }
+    });
 }
 
 async function loadProfile() {

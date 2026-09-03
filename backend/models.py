@@ -32,6 +32,8 @@ class User(Base):
     login_otp_expires = Column(DateTime, nullable=True)
     login_otp_attempts = Column(Integer, default=0, nullable=False)
     login_otp_username = Column(String, nullable=True)
+    login_otp_requested_at = Column(DateTime, nullable=True)
+    daily_bonus_claimed_at = Column(DateTime, nullable=True)
     weekly_challenges_used = Column(Integer, default=0, nullable=False)
     weekly_reset_at = Column(DateTime, nullable=True)
     

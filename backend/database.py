@@ -120,3 +120,8 @@ def init_db():
         comment_columns = conn.execute(text("PRAGMA table_info(comments)")).fetchall()
         if comment_columns and not any(column[1] == "parent_id" for column in comment_columns):
             conn.execute(text("ALTER TABLE comments ADD COLUMN parent_id INTEGER REFERENCES comments(id)"))
+
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_unlocked_hints_user_challenge_number "
+            "ON unlocked_hints (user_id, challenge_id, hint_number)"
+        ))

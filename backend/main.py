@@ -26,6 +26,7 @@ from dotenv import load_dotenv
 from typing import Optional
 from html import escape as escape_html
 from sqlalchemy import text, func
+from sqlalchemy.exc import IntegrityError
 
 from database import init_db, get_db, SessionLocal
 from models import User, Challenge, SolvedChallenge, UnlockedHint, ChallengeReport, UserBan, Comment
@@ -214,6 +215,32 @@ def enforce_community_quota(user: User):
         )
 
 
+def reserve_community_quota(user: User, db: Session):
+    """Atomically reserve one community challenge slot for this user."""
+    check_and_reset_weekly_quota(user)
+    db.flush()
+    updated = db.query(User).filter(
+        User.id == user.id,
+        User.weekly_challenges_used < COMMUNITY_CTF_WEEKLY_LIMIT,
+    ).update(
+        {User.weekly_challenges_used: User.weekly_challenges_used + 1},
+        synchronize_session=False,
+    )
+    if not updated:
+        db.rollback()
+        db.refresh(user)
+        retry_after = max(
+            0,
+            int((user.weekly_reset_at - datetime.utcnow()).total_seconds())
+        ) if user.weekly_reset_at else 0
+        days_left = max(1, retry_after // 86400)
+        raise HTTPException(
+            status_code=429,
+            detail=f"You've reached your weekly limit of {COMMUNITY_CTF_WEEKLY_LIMIT} community CTFs. Quota resets in ~{days_left} day(s)."
+        )
+    db.refresh(user)
+
+
 def ensure_admin_user():
     db = SessionLocal()
     try:
@@ -286,8 +313,7 @@ def purge_expired_community_challenges():
         cutoff = datetime.utcnow() - timedelta(days=COMMUNITY_CTF_EXPIRY_DAYS)
         expired = db.query(Challenge).filter(
             Challenge.is_community == True,
-            Challenge.created_at < cutoff,
-            Challenge.status != "removed"
+            Challenge.created_at < cutoff
         ).all()
 
         if not expired:
@@ -748,6 +774,9 @@ def get_current_user(user_id: int = Depends(verify_token), db: Session = Depends
         "is_admin": bool(user.is_admin),
         "solved_count": solved_count,
         "solved_challenges": challenge_ids,
+        "daily_bonus_claimed_at": user.daily_bonus_claimed_at,
+        "weekly_challenges_used": user.weekly_challenges_used or 0,
+        "weekly_reset_at": user.weekly_reset_at,
         "created_at": user.created_at
     }
 
@@ -788,6 +817,9 @@ def get_profile(user_id: int = Depends(verify_token), db: Session = Depends(get_
         "email": visible_email,
         "email_hidden": bool(user.hide_email),
         "coins": user.coins,
+        "daily_bonus_claimed_at": user.daily_bonus_claimed_at,
+        "weekly_challenges_used": user.weekly_challenges_used or 0,
+        "weekly_reset_at": user.weekly_reset_at,
         "rank_points": user.rank_points,
         "solved_count": len(solved_titles),
         "solved_challenges": solved_titles,
@@ -977,12 +1009,19 @@ def claim_daily_bonus(user_id: int = Depends(verify_token), db: Session = Depend
     ensure_user_not_banned(user_id, db)
 
     now = datetime.utcnow()
-    claimed_at = user.daily_bonus_claimed_at
-    if claimed_at and claimed_at.date() == now.date():
+    updated = db.query(User).filter(
+        User.id == user_id,
+        (User.daily_bonus_claimed_at.is_(None) | (func.date(User.daily_bonus_claimed_at) != now.date().isoformat())),
+    ).update(
+        {
+            User.coins: func.coalesce(User.coins, 0) + 10,
+            User.daily_bonus_claimed_at: now,
+        },
+        synchronize_session=False,
+    )
+    if not updated:
         raise HTTPException(status_code=409, detail="Daily bonus already claimed today")
 
-    user.coins = (user.coins or 0) + 10
-    user.daily_bonus_claimed_at = now
     db.commit()
     db.refresh(user)
     return {"message": "Daily bonus claimed", "coins_earned": 10, "total_coins": user.coins}
@@ -1280,8 +1319,6 @@ def create_community_challenge(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     ensure_user_not_banned(user_id, db)
-    enforce_community_quota(user)
-
     validate_community_submission(payload)
 
     title = payload.title.strip()
@@ -1299,6 +1336,7 @@ def create_community_challenge(
     if payload.hint_1_cost < 0 or payload.hint_2_cost < 0:
         raise HTTPException(status_code=400, detail="Hint costs must be >= 0")
 
+    reserve_community_quota(user, db)
     new_challenge = Challenge(
         title=title,
         category=category,
@@ -1321,7 +1359,6 @@ def create_community_challenge(
     db.add(new_challenge)
     db.flush()
 
-    user.weekly_challenges_used = (user.weekly_challenges_used or 0) + 1
     if not getattr(user, "weekly_reset_at", None):
         user.weekly_reset_at = datetime.utcnow() + timedelta(days=7)
     db.commit()
@@ -1356,6 +1393,8 @@ def report_challenge(
         ensure_user_not_banned(reporter_id, db)
         challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
         if not challenge:
+            raise HTTPException(status_code=404, detail="Challenge not found")
+        if challenge.status in {"rejected", "removed"}:
             raise HTTPException(status_code=404, detail="Challenge not found")
 
         existing = db.query(ChallengeReport).filter(
@@ -1578,10 +1617,12 @@ def unlock_hint(payload: HintRequest, user_id: int = Depends(verify_token), db: 
     challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found")
+    if challenge.status in {"rejected", "removed"}:
+        raise HTTPException(status_code=404, detail="Challenge not found")
     ensure_user_not_banned(user_id, db)
     if hint_number not in [1, 2]:
         raise HTTPException(status_code=400, detail="Invalid hint number")
-    hint_cost = challenge.hint_1_cost if hint_number == 1 else challenge.hint_2_cost
+    hint_cost = max(0, int(challenge.hint_1_cost if hint_number == 1 else challenge.hint_2_cost or 0))
     hint_text = challenge.hint_1 if hint_number == 1 else challenge.hint_2
     if not hint_text:
         raise HTTPException(status_code=404, detail="Hint not available")
@@ -1591,9 +1632,11 @@ def unlock_hint(payload: HintRequest, user_id: int = Depends(verify_token), db: 
         (UnlockedHint.hint_number == hint_number)
     ).first()
     if already_unlocked:
+        user = db.query(User).filter(User.id == user_id).first()
         return {
             "hint_number": hint_number,
             "hint_text": hint_text,
+            "remaining_coins": user.coins if user else 0,
             "message": "Hint already unlocked"
         }
     user = db.query(User).filter(User.id == user_id).first()
@@ -1604,7 +1647,24 @@ def unlock_hint(payload: HintRequest, user_id: int = Depends(verify_token), db: 
     user.coins -= hint_cost
     new_unlocked_hint = UnlockedHint(user_id=user_id, challenge_id=challenge_id, hint_number=hint_number)
     db.add(new_unlocked_hint)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = db.query(UnlockedHint).filter(
+            (UnlockedHint.user_id == user_id) &
+            (UnlockedHint.challenge_id == challenge_id) &
+            (UnlockedHint.hint_number == hint_number)
+        ).first()
+        if not existing:
+            raise
+        db.refresh(user)
+        return {
+            "hint_number": hint_number,
+            "hint_text": hint_text,
+            "remaining_coins": user.coins,
+            "message": "Hint already unlocked"
+        }
     return {
         "hint_number": hint_number,
         "hint_text": hint_text,

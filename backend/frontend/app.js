@@ -618,7 +618,7 @@ function updateModerationWidget() {
 
 function getBonusClaimKey() {
   const today = new Date();
-  return `${today.getFullYear()}-${today.getMonth() + 1}-${today.getDate()}`;
+  return today.toISOString().slice(0, 10);
 }
 
 function getBonusStorageKey() {
@@ -631,7 +631,9 @@ function updateBonusButtonState() {
   if (!bonusButton) return;
 
   const claimedKey = localStorage.getItem(getBonusStorageKey());
-  const isClaimedToday = claimedKey === getBonusClaimKey();
+  const serverClaimedAt = currentUser?.daily_bonus_claimed_at;
+  const isClaimedToday = claimedKey === getBonusClaimKey()
+    || (serverClaimedAt && new Date(serverClaimedAt).toISOString().slice(0, 10) === getBonusClaimKey());
   const hasUser = Boolean(currentUser);
 
   bonusButton.disabled = !hasUser || isClaimedToday;
@@ -3284,6 +3286,12 @@ function claimDailyBonus() {
       updateBonusButtonState();
     })
     .catch((error) => {
+      if (error.message === 'Daily bonus already claimed today') {
+        localStorage.setItem(storageKey, todayKey);
+        updateBonusButtonState();
+        showToast('⚠️ Bonus already claimed today', 'error');
+        return;
+      }
       showToast(`❌ ${error.message}`, 'error');
       updateBonusButtonState();
     })

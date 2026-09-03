@@ -16,7 +16,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install Python deps first (better Docker layer caching)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Force reinstall anyio to override cached wheels
+RUN pip install --no-cache-dir --force-reinstall -r requirements.txt
 
 # Copy backend source (includes bundled frontend/ folder)
 COPY . .

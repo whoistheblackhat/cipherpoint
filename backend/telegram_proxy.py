@@ -410,9 +410,12 @@ def start_admin_bot_polling(db_factory):
                     continue
 
                 url = f"{TELEGRAM_API_URL}/bot{TELEGRAM_ADMIN_BOT_TOKEN}/getUpdates"
+                # Telegram API expects allowed_updates as a JSON array string,
+                # not a Python list (which would create duplicate query params).
+                allowed_updates_json = json.dumps(["message", "callback_query"])
                 response = requests.get(
                     url,
-                    params={"timeout": 30, "offset": admin_bot_offset, "allowed_updates": ["message", "callback_query"]},
+                    params={"timeout": 30, "offset": admin_bot_offset, "allowed_updates": allowed_updates_json},
                     timeout=35,
                 )
                 response.raise_for_status()
@@ -422,9 +425,19 @@ def start_admin_bot_polling(db_factory):
                     for update in data.get("result", []):
                         admin_bot_offset = max(admin_bot_offset, update.get("update_id", 0) + 1)
                         _handle_admin_command(update, db_factory)
+            except requests.exceptions.HTTPError as e:
+                # 409 = another instance is polling. Back off longer.
+                if e.response is not None and e.response.status_code == 409:
+                    print(f"Admin bot 409 Conflict: another instance is polling. Backing off 60s.")
+                    _time.sleep(60)
+                else:
+                    print(f"Admin bot polling error: {e}")
+                    _time.sleep(5)
             except Exception as e:
                 print(f"Admin bot polling error: {e}")
-                _time.sleep(5)
+                # Random jitter to avoid thundering herd if multiple instances exist
+                import random
+                _time.sleep(5 + random.uniform(0, 5))
 
     thread = threading.Thread(target=poll, daemon=True)
     thread.start()

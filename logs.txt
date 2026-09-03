@@ -1,0 +1,93 @@
+==> Cloning from https://github.com/whoistheblackhat/cipherpoint
+==> Checking out commit 117d8ffc787163bc14443973baf449cf0571cdca in branch main
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 1.33kB done
+#1 DONE 0.0s
+#2 [internal] load metadata for docker.io/library/python:3.11-slim
+#2 ...
+#3 [auth] library/python:pull render-prod/docker-mirror-repository/library/python:pull token for us-west1-docker.pkg.dev
+#3 DONE 0.0s
+#2 [internal] load metadata for docker.io/library/python:3.11-slim
+#2 DONE 2.3s
+#4 [internal] load .dockerignore
+#4 transferring context: 928B done
+#4 DONE 0.0s
+#5 [internal] load build context
+#5 DONE 0.0s
+#6 [1/7] FROM docker.io/library/python:3.11-slim@sha256:9534e5a8e315485d4061ed659af0fd78a284c015f9b73661b41d6bab25604534
+#6 resolve docker.io/library/python:3.11-slim@sha256:9534e5a8e315485d4061ed659af0fd78a284c015f9b73661b41d6bab25604534 done
+#6 DONE 0.0s
+#7 importing cache manifest
+#7 inferred cache manifest type: application/vnd.oci.image.manifest.v1+json done
+#7 DONE 0.2s
+#5 [internal] load build context
+#5 transferring context: 405.88kB done
+#5 DONE 0.0s
+#8 [2/7] WORKDIR /app
+#8 CACHED
+#9 [3/7] RUN apt-get update && apt-get install -y --no-install-recommends     build-essential     ffmpeg     curl     && rm -rf /var/lib/apt/lists/*
+#9 CACHED
+#10 [4/7] COPY requirements.txt .
+#10 CACHED
+#11 [5/7] RUN pip install --no-cache-dir -r requirements.txt
+#11 extracting sha256:6310eb16bf4251731feab01e8f633bf5e2d75a657ccad97f420b1f83cce457be
+#11 extracting sha256:6310eb16bf4251731feab01e8f633bf5e2d75a657ccad97f420b1f83cce457be 0.5s done
+#11 extracting sha256:3678bb828654fcc3752f7a5eb63c5accfa00c97047252f25405285550d74a3fd
+#11 extracting sha256:3678bb828654fcc3752f7a5eb63c5accfa00c97047252f25405285550d74a3fd 0.2s done
+#11 extracting sha256:db840d086b65cf73e0feea3bd0cf11063818114e466846ae3f2b2fb1a8c2b143
+#11 extracting sha256:db840d086b65cf73e0feea3bd0cf11063818114e466846ae3f2b2fb1a8c2b143 0.4s done
+#11 extracting sha256:f9efa1b83d065a7c5a3041582875b75d63c4ab3d4413514de8e413b51f90e91a done
+#11 extracting sha256:ca1a5e1b301a6c49effa29d435ecda0190ad7f0fe3d45192ce6d0b425a77dc37 done
+#11 DONE 4.0s
+#11 [5/7] RUN pip install --no-cache-dir -r requirements.txt
+#11 extracting sha256:91be1e43391ad07af19249f581d48683ae262c0cdca5694c7606f56370faa6b0
+#11 extracting sha256:91be1e43391ad07af19249f581d48683ae262c0cdca5694c7606f56370faa6b0 1.7s done
+#11 DONE 5.8s
+#11 [5/7] RUN pip install --no-cache-dir -r requirements.txt
+#11 extracting sha256:7dba4f78d8a8ba6b3a180daf79400784cbe2b17a3be8ded7c1f6c1df6b81a134 done
+#11 extracting sha256:5d0b8daf084f5b0145678aad9ecb2f94ab02f9f693201608b6081445a41799e9
+#11 extracting sha256:5d0b8daf084f5b0145678aad9ecb2f94ab02f9f693201608b6081445a41799e9 0.3s done
+#11 DONE 6.1s
+#12 [6/7] COPY . .
+#12 DONE 0.0s
+#13 [7/7] RUN mkdir -p /app/data
+#13 DONE 0.0s
+#14 exporting cache to registry
+#14 sending cache export
+#14 ...
+#15 exporting to image
+#15 exporting layers 0.0s done
+#15 pushing layers 0.7s done
+#15 DONE 0.8s
+#14 exporting cache to registry
+#14 sending cache export 1.4s done
+#14 DONE 1.4s
+==> Deploying...
+==> Setting WEB_CONCURRENCY=1 by default, based on available CPUs in the instance
+[2026-09-03 08:32:16 +0000] [7] [INFO] Starting gunicorn 21.2.0
+[2026-09-03 08:32:16 +0000] [7] [INFO] Listening at: http://0.0.0.0:10000 (7)
+[2026-09-03 08:32:16 +0000] [7] [INFO] Using worker: uvicorn.workers.UvicornWorker
+[2026-09-03 08:32:16 +0000] [26] [INFO] Booting worker with pid: 26
+[2026-09-03 08:32:20 +0000] [26] [INFO] Started server process [26]
+[2026-09-03 08:32:20 +0000] [26] [INFO] Waiting for application startup.
+✅ Database initialized!
+📡 Telegram upload bots: 3 configured
+📡 Telegram admin bot: configured
+📡 Telegram admin chat ID: configured
+🛡️  Turnstile: ENABLED
+📊 Community CTF quota: 2/week, expiry: 7 days
+📡 Telegram startup notification sent successfully
+[2026-09-03 08:32:27 +0000] [26] [INFO] Application startup complete.
+127.0.0.1:35372 - "HEAD / HTTP/1.1" 405
+127.0.0.1:44502 - "HEAD / HTTP/1.1" 405
+127.0.0.1:44520 - "HEAD / HTTP/1.1" 405
+10.24.209.135:0 - "GET / HTTP/1.1" 200
+==> Your service is live 🎉
+==> 
+==> ///////////////////////////////////////////////////////////
+==> 
+==> Available at your primary URL https://cipherpoint.linkpc.net + 1 more domain
+==> 
+==> ///////////////////////////////////////////////////////////
+Admin bot polling error: 409 Client Error: Conflict for url: https://api.telegram.org/bot8488934096:AAGiXmso-YGG3gQh6vnUYm8iZ2ct8fpkGQc/getUpdates?timeout=30&offset=0&allowed_updates=message&allowed_updates=callback_query
+Admin bot polling error: 409 Client Error: Conflict for url: https://api.telegram.org/bot8488934096:AAGiXmso-YGG3gQh6vnUYm8iZ2ct8fpkGQc/getUpdates?timeout=30&offset=0&allowed_updates=message&allowed_updates=callback_query

@@ -1051,6 +1051,30 @@ async function handleSignup(event) {
     return;
   }
 
+  if (!/^[A-Za-z0-9_.-]{3,32}$/.test(username)) {
+    if (messageBox) {
+      messageBox.textContent = 'Username must be 3-32 chars (letters, digits, . _ -)';
+      messageBox.classList.add('error');
+    }
+    return;
+  }
+
+  if (!/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(email)) {
+    if (messageBox) {
+      messageBox.textContent = 'Please enter a valid email address';
+      messageBox.classList.add('error');
+    }
+    return;
+  }
+
+  if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+    if (messageBox) {
+      messageBox.textContent = 'Password must be 8+ chars and contain a letter and a digit';
+      messageBox.classList.add('error');
+    }
+    return;
+  }
+
   if (password !== confirmPassword) {
     if (messageBox) {
       messageBox.textContent = 'Passwords do not match';
@@ -1865,9 +1889,17 @@ async function submitPasswordChange(event) {
     return;
   }
 
-  if (newPassword.length < 6) {
+  if (newPassword.length < 8 || !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
     if (messageEl) {
-      messageEl.textContent = 'Password must be at least 6 characters';
+      messageEl.textContent = 'Password must be 8+ chars and contain a letter and a digit';
+      messageEl.className = 'form-message show error';
+    }
+    return;
+  }
+
+  if (newPassword === currentPassword) {
+    if (messageEl) {
+      messageEl.textContent = 'New password must be different from the current one';
       messageEl.className = 'form-message show error';
     }
     return;
@@ -3593,6 +3625,11 @@ function onTurnstileSuccessSignup(token) {
   if (input) input.value = token || '';
 }
 
+function onTurnstileSuccessForgot(token) {
+  const input = safeGetById('forgotTurnstileToken');
+  if (input) input.value = token || '';
+}
+
 function setupForgotPassword() {
   const forgotLink = safeGetById('forgotPasswordLink');
   if (forgotLink) {
@@ -3608,6 +3645,7 @@ function setupForgotPassword() {
     forgotForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       const username = safeGetById('forgotPasswordUsername')?.value?.trim();
+      const turnstileToken = safeGetById('forgotTurnstileToken')?.value;
       const messageEl = safeGetById('forgotPasswordMessage');
       if (!username) {
         if (messageEl) {
@@ -3620,7 +3658,7 @@ function setupForgotPassword() {
         const response = await fetch(`${API_BASE_URL}/auth/password-reset/request`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username })
+          body: JSON.stringify({ username, turnstile_token: turnstileToken || null })
         });
         const data = await response.json().catch(() => ({}));
         if (messageEl) {
@@ -3663,9 +3701,9 @@ function setupForgotPassword() {
         }
         return;
       }
-      if (newPassword.length < 6) {
+      if (newPassword.length < 8 || !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
         if (messageEl) {
-          messageEl.textContent = 'Password must be at least 6 characters';
+          messageEl.textContent = 'Password must be 8+ chars and contain a letter and a digit';
           messageEl.className = 'form-message show error';
         }
         return;

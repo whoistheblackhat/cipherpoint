@@ -114,6 +114,8 @@
                     <label for="forgotPasswordUsername"><i class="fa-solid fa-user"></i> Username</label>
                     <input id="forgotPasswordUsername" type="text" placeholder="Your username" required>
                 </div>
+                <div class="turnstile-widget" id="forgotTurnstileWidget" data-sitekey="0x4AAAAAAEluDz4B8bvFcmsF" data-callback="onTurnstileSuccessForgot" data-theme="dark"></div>
+                <input type="hidden" id="forgotTurnstileToken" name="cf-turnstile-response">
                 <div id="forgotPasswordMessage" class="form-message"></div>
                 <button type="submit" class="btn btn-primary btn-block">Send Reset Token</button>
             </form>
@@ -130,7 +132,7 @@
                     <h2>Set New Password</h2>
                 </div>
             </div>
-            <p class="auth-form-helper">Paste the reset token sent to your Telegram and choose a new password (at least 6 characters).</p>
+            <p class="auth-form-helper">Paste the reset token sent to your Telegram and choose a new password (8+ characters, with a letter and a digit).</p>
             <form id="resetPasswordForm" class="auth-form">
                 <div class="field-wrap">
                     <label for="resetTokenInput"><i class="fa-solid fa-ticket"></i> Reset Token (from Telegram)</label>
@@ -139,7 +141,7 @@
                 <div class="field-wrap">
                     <label for="newPasswordReset"><i class="fa-solid fa-key"></i> New Password</label>
                     <div class="password-field">
-                        <input id="newPasswordReset" type="password" placeholder="At least 6 characters" required minlength="6">
+                        <input id="newPasswordReset" type="password" placeholder="At least 8 characters" required minlength="8">
                         <button type="button" class="password-toggle" aria-label="Toggle password visibility">
                             <i class="fa-solid fa-eye"></i>
                         </button>

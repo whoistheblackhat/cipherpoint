@@ -97,6 +97,12 @@ def init_db():
             conn.execute(text("ALTER TABLE users ADD COLUMN weekly_challenges_used INTEGER DEFAULT 0 NOT NULL"))
         if not any(column[1] == "weekly_reset_at" for column in user_columns):
             conn.execute(text("ALTER TABLE users ADD COLUMN weekly_reset_at DATETIME"))
+        if not any(column[1] == "failed_login_count" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN failed_login_count INTEGER DEFAULT 0 NOT NULL"))
+        if not any(column[1] == "locked_until" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN locked_until DATETIME"))
+        if not any(column[1] == "last_failed_login_at" for column in user_columns):
+            conn.execute(text("ALTER TABLE users ADD COLUMN last_failed_login_at DATETIME"))
 
         challenge_columns = conn.execute(text("PRAGMA table_info(challenges)")).fetchall()
         for column_name, default_sql in [

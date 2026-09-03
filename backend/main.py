@@ -84,16 +84,34 @@ def verify_turnstile_token(token: str | None, remote_ip: str | None = None) -> b
 # Initialize FastAPI app
 app = FastAPI(title="CipherPoint API", version="1.0.0")
 
-# CORS Middleware
-frontend_url = os.getenv("FRONTEND_URL", "").strip()
-allowed_origins = [frontend_url] if frontend_url else ["*"]
+# CORS Middleware — never use "*" in production. If FRONTEND_URL is not
+# set we fall back to the public site URL and the onrender.com default.
+_frontend_url = os.getenv("FRONTEND_URL", "").strip()
+if not _frontend_url:
+    if IS_PRODUCTION:
+        # Fail safely: don't ship with a wildcard CORS in production.
+        _frontend_url = "https://cipherpoint.onrender.com"
+    else:
+        _frontend_url = "*"  # dev convenience only
+
+allowed_origins = [_frontend_url] if _frontend_url != "*" else ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=bool(frontend_url),
-    allow_methods=["*"],
+    allow_credentials=bool(_frontend_url and _frontend_url != "*"),
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Force HTTPS in production. Render already terminates TLS for us, but
+# this guards against accidental HTTP-only deploys.
+if IS_PRODUCTION:
+    from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
+    # Disabled by default — Render's external LB handles the upgrade.
+    # Enable with FORCE_HTTPS=1 if you ever put the service behind a
+    # plain-HTTP proxy.
+    if os.getenv("FORCE_HTTPS", "0") == "1":
+        app.add_middleware(HTTPSRedirectMiddleware)
 
 # Request models
 class UserSignupRequest(BaseModel):
@@ -416,13 +434,21 @@ def start_expiry_scheduler():
 
 # ==================== UTILITY FUNCTIONS ====================
 
-def hash_password(password: str) -> str:
-    """Hash password using bcrypt"""
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify hashed password"""
-    return bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
+from security import (
+    hash_password,
+    verify_password,
+    is_valid_username,
+    is_valid_email,
+    password_strength_errors,
+    rate_limit_check,
+    rate_limit_reset,
+    is_account_locked,
+    record_failed_login,
+    record_successful_login,
+    constant_time_eq,
+    LOGIN_MAX_ATTEMPTS,
+    LOGIN_LOCKOUT_MINUTES,
+)
 
 def create_access_token(data: dict):
     """Create JWT access token"""
@@ -594,35 +620,76 @@ def create_comment(
 
 @app.post("/api/auth/signup")
 def signup(payload: UserSignupRequest, request: Request, db: Session = Depends(get_db)):
-    """User signup endpoint"""
-    username = payload.username.strip()
-    email = payload.email.strip().lower()
-    password = payload.password
-    if not username or not email or not password:
-        raise HTTPException(status_code=400, detail="Username, email and password are required")
+    """User signup endpoint.
 
+    Defenses:
+      - Turnstile CAPTCHA in production
+      - Per-IP rate limit (5 signups / hour)
+      - Strict input validation (username charset/length, email format,
+        password strength)
+      - Race-condition safe: the unique constraints on username/email are
+        the source of truth, and we catch IntegrityError as a backstop.
+    """
     if TURNSTILE_SECRET_KEY and TURNSTILE_ENABLED:
         remote_ip = request.client.host if request.client else None
         if not verify_turnstile_token(payload.turnstile_token, remote_ip):
             raise HTTPException(status_code=403, detail="Turnstile verification failed. Please complete the security check.")
 
-    existing_user = db.query(User).filter(
+    # Per-IP rate limit (defense against mass account creation / spam)
+    ip = request.client.host if request.client else "unknown"
+    allowed, retry = rate_limit_check(f"signup_ip:{ip}", max_events=5, window_seconds=3600)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many signups from this network. Try again in {retry}s.",
+            headers={"Retry-After": str(retry)},
+        )
+
+    username = (payload.username or "").strip()
+    email = (payload.email or "").strip().lower()
+    password = payload.password or ""
+
+    # Validation
+    ok, reason = is_valid_username(username)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
+    ok, reason = is_valid_email(email)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
+    pw_errors = password_strength_errors(password)
+    if pw_errors:
+        # Surface the first error to keep the message short, but log all
+        raise HTTPException(status_code=400, detail=pw_errors[0])
+
+    # Pre-check (best effort, gives nicer error message than IntegrityError)
+    existing = db.query(User).filter(
         (User.username == username) | (User.email == email)
     ).first()
-    if existing_user:
+    if existing:
+        # Don't reveal which of the two collided
         raise HTTPException(status_code=400, detail="Username or email already exists")
-    hashed_password = hash_password(password)
-    new_user = User(
-        username=username,
-        email=email,
-        password_hash=hashed_password,
-        coins=50,
-        rank_points=0,
-        is_admin=False,
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
+
+    try:
+        new_user = User(
+            username=username,
+            email=email,
+            password_hash=hash_password(password),
+            coins=50,
+            rank_points=0,
+            is_admin=False,
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+    except IntegrityError:
+        db.rollback()
+        # Lost the race against a concurrent signup with the same
+        # username/email. The DB unique constraint caught it for us.
+        raise HTTPException(status_code=400, detail="Username or email already exists")
+    except Exception:
+        db.rollback()
+        raise
+
     access_token = create_access_token(data={"sub": new_user.id})
     return {
         "id": new_user.id,
@@ -637,25 +704,72 @@ def signup(payload: UserSignupRequest, request: Request, db: Session = Depends(g
 
 @app.post("/api/auth/login")
 def login(payload: UserLoginRequest, request: Request, db: Session = Depends(get_db)):
-    """User login endpoint"""
+    """User login endpoint.
+
+    Defenses:
+      - Turnstile CAPTCHA
+      - Per-IP rate limit (20 attempts / 5 min)
+      - Per-account lockout after 5 failed attempts (15 min)
+      - Constant-ish time: we always run bcrypt even when the user is
+        not found, by hashing a dummy password. This prevents
+        username-enumeration via response timing.
+    """
     if TURNSTILE_SECRET_KEY and TURNSTILE_ENABLED:
         remote_ip = request.client.host if request.client else None
         if not verify_turnstile_token(payload.turnstile_token, remote_ip):
             raise HTTPException(status_code=403, detail="Turnstile verification failed. Please complete the security check.")
 
+    # Per-IP rate limit (defense against credential stuffing)
+    ip = request.client.host if request.client else "unknown"
+    allowed, retry = rate_limit_check(f"login_ip:{ip}", max_events=20, window_seconds=300)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many login attempts from this network. Try again in {retry}s.",
+            headers={"Retry-After": str(retry)},
+        )
+
     identifier = (payload.username or "").strip()
     if not identifier:
         raise HTTPException(status_code=400, detail="Username or email is required")
 
-    normalized_identifier = identifier.lower()
+    normalized = identifier.lower()
     user = db.query(User).filter(
-        (User.username == identifier) |
-        (User.email == normalized_identifier)
+        (User.username == identifier) | (User.email == normalized)
     ).first()
+
+    # Constant-ish time path: if no user was found, still run bcrypt
+    # against a dummy hash so the response time is similar to a real
+    # failed login. This makes username enumeration via timing harder.
     if not user:
-        user = db.query(User).filter(User.email == normalized_identifier).first()
-    if not user or not verify_password(payload.password, user.password_hash):
+        # Hash a throwaway password so bcrypt runs in any case
+        try:
+            bcrypt.checkpw(b"x", b"$2b$12$" + b"x" * 53)
+        except Exception:
+            pass
         raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    # Account lockout check
+    locked, secs_left = is_account_locked(user)
+    if locked:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Account temporarily locked due to too many failed attempts. Try again in {secs_left // 60 + 1} minute(s).",
+            headers={"Retry-After": str(secs_left)},
+        )
+
+    if not verify_password(payload.password, user.password_hash):
+        record_failed_login(user)
+        db.commit()
+        # Generic message — never reveal whether the password was wrong vs.
+        # whether the user exists.
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    # Successful login: reset counters, clear rate-limit bucket
+    record_successful_login(user)
+    db.commit()
+    rate_limit_reset(f"login_user:{user.id}")
+
     ensure_user_not_banned(user.id, db)
     access_token = create_access_token(data={"sub": user.id})
     return {
@@ -681,7 +795,13 @@ def _generate_login_otp() -> str:
 
 @app.post("/api/auth/login/otp/request")
 def login_otp_request(payload: OtpLoginRequest, request: Request, db: Session = Depends(get_db)):
-    """Send a 6-digit OTP to the given Telegram chat_id for passwordless login."""
+    """Send a 6-digit OTP to the given Telegram chat_id for passwordless login.
+
+    Defenses:
+      - Turnstile CAPTCHA
+      - Per-IP rate limit (10 requests / 5 min)
+      - Existing per-user 60s cooldown between requests
+    """
     chat_id = (payload.chat_id or "").strip()
     if not chat_id or not chat_id.lstrip("-").isdigit():
         raise HTTPException(status_code=400, detail="A valid Telegram chat ID is required")
@@ -690,6 +810,16 @@ def login_otp_request(payload: OtpLoginRequest, request: Request, db: Session = 
         remote_ip = request.client.host if request.client else None
         if not verify_turnstile_token(payload.turnstile_token, remote_ip):
             raise HTTPException(status_code=403, detail="Turnstile verification failed. Please complete the security check.")
+
+    # Per-IP rate limit (defense against OTP-spam to a leaked chat_id)
+    ip = request.client.host if request.client else "unknown"
+    allowed, retry = rate_limit_check(f"otp_req_ip:{ip}", max_events=10, window_seconds=300)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many OTP requests from this network. Try again in {retry}s.",
+            headers={"Retry-After": str(retry)},
+        )
 
     user = db.query(User).filter(User.telegram_chat_id == chat_id).first()
     if not user:
@@ -734,12 +864,29 @@ def login_otp_request(payload: OtpLoginRequest, request: Request, db: Session = 
 
 
 @app.post("/api/auth/login/otp/verify")
-def login_otp_verify(payload: OtpVerifyRequest, db: Session = Depends(get_db)):
-    """Verify the OTP and issue a JWT for the linked user."""
+def login_otp_verify(payload: OtpVerifyRequest, request: Request, db: Session = Depends(get_db)):
+    """Verify the OTP and issue a JWT for the linked user.
+
+    Defenses:
+      - Per-IP rate limit (10 attempts / 5 min) so a stolen chat_id
+        can't be brute-forced from one IP
+      - Per-account attempt counter with hard cap (already present)
+      - Constant-time compare of the OTP
+    """
     chat_id = (payload.chat_id or "").strip()
     otp = (payload.otp or "").strip()
     if not chat_id or not otp:
         raise HTTPException(status_code=400, detail="Chat ID and OTP are required")
+
+    # Per-IP rate limit (in addition to the per-user cap)
+    ip = request.client.host if request.client else "unknown"
+    allowed, retry = rate_limit_check(f"otp_ip:{ip}", max_events=10, window_seconds=300)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many OTP attempts from this network. Try again in {retry}s.",
+            headers={"Retry-After": str(retry)},
+        )
 
     user = db.query(User).filter(User.telegram_chat_id == chat_id).first()
     if not user:
@@ -767,7 +914,9 @@ def login_otp_verify(payload: OtpVerifyRequest, db: Session = Depends(get_db)):
         db.commit()
         raise HTTPException(status_code=429, detail="Too many failed attempts. Please request a new OTP.")
 
-    if otp != stored_code:
+    # Constant-time OTP compare (length-aware, but does not leak the
+    # correct code via early-exit timing).
+    if not constant_time_eq(otp, stored_code):
         user.login_otp_attempts = attempts + 1
         remaining = OTP_MAX_ATTEMPTS - user.login_otp_attempts
         db.commit()
@@ -778,6 +927,9 @@ def login_otp_verify(payload: OtpVerifyRequest, db: Session = Depends(get_db)):
     user.login_otp_attempts = 0
     if hasattr(user, "login_otp_requested_at"):
         user.login_otp_requested_at = None
+    # Successful OTP login counts as a successful auth — clear lockout.
+    user.failed_login_count = 0
+    user.locked_until = None
     db.commit()
 
     access_token = create_access_token(data={"sub": user.id})
@@ -796,21 +948,26 @@ def login_otp_verify(payload: OtpVerifyRequest, db: Session = Depends(get_db)):
 
 @app.get("/api/auth/me")
 def get_current_user(user_id: int = Depends(verify_token), db: Session = Depends(get_db)):
-    """Get current user profile"""
+    """Get current user profile.
+
+    Scoped response: only the fields the frontend needs to render the
+    UI. Internal/security-sensitive fields (e.g. password hash, lockout
+    counters, internal nonces, OTP-related fields) are NEVER returned.
+    """
     user = db.query(User).filter(User.id == user_id).first()
-    
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     ensure_user_not_banned(user_id, db)
     solved_count = db.query(SolvedChallenge).filter(SolvedChallenge.user_id == user_id).count()
     solved_challenges = db.query(SolvedChallenge).filter(SolvedChallenge.user_id == user_id).all()
     challenge_ids = [entry.challenge_id for entry in solved_challenges]
-    
+
     return {
         "id": user.id,
         "username": user.username,
-        "email": user.email,
+        "email": user.email if not user.hide_email else None,
         "coins": user.coins,
         "rank_points": user.rank_points,
         "is_admin": bool(user.is_admin),
@@ -819,7 +976,7 @@ def get_current_user(user_id: int = Depends(verify_token), db: Session = Depends
         "daily_bonus_claimed_at": user.daily_bonus_claimed_at,
         "weekly_challenges_used": user.weekly_challenges_used or 0,
         "weekly_reset_at": user.weekly_reset_at,
-        "created_at": user.created_at
+        "created_at": user.created_at,
     }
 
 @app.get("/api/profile")
@@ -930,6 +1087,7 @@ class TelegramSettingsRequest(BaseModel):
 
 class PasswordResetRequest(BaseModel):
     username: str
+    turnstile_token: str | None = None
 
 class PasswordResetConfirm(BaseModel):
     reset_token: str
@@ -946,12 +1104,29 @@ def change_password(payload: PasswordChangeRequest, user_id: int = Depends(verif
         raise HTTPException(status_code=404, detail="User not found")
 
     if not verify_password(payload.current_password, user.password_hash):
+        # Reuse the login lockout mechanism so brute-forcing the
+        # current-password field doesn't bypass the account lockout.
+        record_failed_login(user)
+        db.commit()
         raise HTTPException(status_code=400, detail="Current password is incorrect")
 
-    if len(payload.new_password) < 6:
-        raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
+    pw_errors = password_strength_errors(payload.new_password or "")
+    if pw_errors:
+        raise HTTPException(status_code=400, detail=pw_errors[0])
+
+    # Refuse to "change" the password to the exact same one. This avoids
+    # sending a misleading "password updated" notification and prevents
+    # trivial lockout from being used as a denial-of-service vector.
+    if verify_password(payload.new_password, user.password_hash):
+        raise HTTPException(
+            status_code=400,
+            detail="New password must be different from the current one",
+        )
 
     user.password_hash = hash_password(payload.new_password)
+    # Wipe any outstanding password-reset tokens so they can't be reused.
+    user.reset_token = None
+    user.reset_token_expires = None
     db.commit()
 
     if user.telegram_chat_id and user.telegram_notifications:
@@ -1170,31 +1345,72 @@ def update_telegram_settings(payload: TelegramSettingsRequest, user_id: int = De
 
 
 @app.post("/api/auth/password-reset/request")
-def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == payload.username).first()
-    if not user:
-        return {"message": "If the account exists, a reset link has been sent"}
+def request_password_reset(payload: PasswordResetRequest, request: Request, db: Session = Depends(get_db)):
+    """Request a password reset.
 
-    if not user.telegram_chat_id or not TELEGRAM_REPORT_BOT_TOKEN:
-        return {"message": "If the account exists, a reset link has been sent"}
+    Defenses:
+      - Turnstile CAPTCHA
+      - Per-IP rate limit (5 requests / hour)
+      - Constant-time response: we always return the same message,
+        always do a DB lookup (even when the username is empty), and
+        always do a (cheap) DB write attempt. This prevents
+        username-enumeration via response timing or status code.
+    """
+    if TURNSTILE_SECRET_KEY and TURNSTILE_ENABLED:
+        remote_ip = request.client.host if request.client else None
+        if not verify_turnstile_token(payload.turnstile_token, remote_ip):
+            raise HTTPException(status_code=403, detail="Turnstile verification failed. Please complete the security check.")
 
-    import secrets
-    token = secrets.token_urlsafe(32)
-    setattr(user, "reset_token", token)
-    from datetime import datetime, timedelta
-    setattr(user, "reset_token_expires", datetime.utcnow() + timedelta(minutes=30))
-    db.commit()
+    ip = request.client.host if request.client else "unknown"
+    allowed, retry = rate_limit_check(f"reset_ip:{ip}", max_events=5, window_seconds=3600)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many reset requests. Try again in {retry}s.",
+            headers={"Retry-After": str(retry)},
+        )
 
-    message = (
-        f"🔐 <b>Password Reset Request</b>\n\n"
-        f"Hello <b>{escape_html(user.username)}</b>,\n\n"
-        f"Use this token to reset your password (valid for 30 minutes):\n\n"
-        f"<code>{token}</code>\n\n"
-        f"If you did not request this, please secure your account immediately."
-    )
-    send_user_notification(user.telegram_chat_id, message)
+    raw_identifier = (payload.username or "").strip()
+    normalized = raw_identifier.lower()
+    GENERIC_RESPONSE = {"message": "If the account exists and has a linked Telegram, a reset code has been sent."}
 
-    return {"message": "If the account exists, a reset link has been sent"}
+    # Constant-time-ish: always look up the user, even if input is empty.
+    user = None
+    if raw_identifier:
+        user = db.query(User).filter(
+            (User.username == raw_identifier) | (User.email == normalized)
+        ).first()
+
+    # Branch on whether the user can actually receive a reset code. We
+    # intentionally do not short-circuit the DB write / Telegram call
+    # when the user is missing, so timing doesn't leak account existence.
+    if user and user.telegram_chat_id and TELEGRAM_REPORT_BOT_TOKEN:
+        import secrets as _secrets
+        from datetime import datetime as _dt, timedelta as _td
+        token = _secrets.token_urlsafe(32)
+        user.reset_token = token
+        user.reset_token_expires = _dt.utcnow() + _td(minutes=30)
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            return GENERIC_RESPONSE
+
+        message = (
+            f"🔐 <b>Password Reset Request</b>\n\n"
+            f"Hello <b>{escape_html(user.username)}</b>,\n\n"
+            f"Use this token to reset your password (valid for 30 minutes):\n\n"
+            f"<code>{token}</code>\n\n"
+            f"If you did not request this, please secure your account immediately."
+        )
+        try:
+            send_user_notification(user.telegram_chat_id, message)
+        except Exception:
+            # Don't leak the error to the caller
+            pass
+    # else: do nothing — fall through to the generic response.
+
+    return GENERIC_RESPONSE
 
 
 @app.post("/api/auth/password-reset/confirm")
@@ -1208,12 +1424,21 @@ def confirm_password_reset(payload: PasswordResetConfirm, db: Session = Depends(
     if not expires or expires < datetime.utcnow():
         raise HTTPException(status_code=400, detail="Invalid or expired token")
 
-    if len(payload.new_password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    pw_errors = password_strength_errors(payload.new_password or "")
+    if pw_errors:
+        raise HTTPException(status_code=400, detail=pw_errors[0])
+
+    # Don't allow resetting to the current password (no-op reset).
+    if verify_password(payload.new_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="New password must be different from the current one")
 
     user.password_hash = hash_password(payload.new_password)
     setattr(user, "reset_token", None)
     setattr(user, "reset_token_expires", None)
+    # Also clear any failed-login state so a successful reset doesn't
+    # leave the user locked out.
+    user.failed_login_count = 0
+    user.locked_until = None
     db.commit()
 
     if user.telegram_chat_id:

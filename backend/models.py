@@ -36,6 +36,10 @@ class User(Base):
     daily_bonus_claimed_at = Column(DateTime, nullable=True)
     weekly_challenges_used = Column(Integer, default=0, nullable=False)
     weekly_reset_at = Column(DateTime, nullable=True)
+    # Account lockout (defends against password brute-force)
+    failed_login_count = Column(Integer, default=0, nullable=False)
+    locked_until = Column(DateTime, nullable=True)
+    last_failed_login_at = Column(DateTime, nullable=True)
     
     # Relationships
     solved_challenges = relationship("SolvedChallenge", back_populates="user")

@@ -2156,16 +2156,14 @@ function renderMedia(fileId) {
     return '<span class="media-placeholder"><i class="fa-solid fa-image"></i><span>Media unavailable</span></span>';
   }
   const mediaUrl = `/api/media/${encodeURIComponent(fileId)}`;
-  const isVideo = fileId.startsWith('BAAC') || fileId.startsWith('BAAD') || fileId.startsWith('BAABAg');
   const safeId = encodeURIComponent(fileId);
   const downloadHref = `/api/media/${safeId}?download=1`;
   const downloadBtn = `<a class="media-download-btn" href="${downloadHref}" download title="Download to inspect metadata locally"><i class="fa-solid fa-download"></i><span>Download</span></a>`;
-  const wrapperOpen = `<div class="media-wrapper">`;
-  const wrapperClose = `</div>`;
-  if (isVideo) {
-    return `${wrapperOpen}<video src="${mediaUrl}" controls preload="metadata" onerror="handleMediaError(this)"></video>${downloadBtn}${wrapperClose}`;
-  }
-  return `${wrapperOpen}<img src="${mediaUrl}" alt="Challenge media" loading="lazy" onerror="handleMediaError(this)"/>${downloadBtn}${wrapperClose}`;
+  // All uploads now go through sendDocument to preserve EXIF/metadata,
+  // so file_id prefix is no longer a reliable video hint. We render an
+  // <img> first; if it's actually a video, handleMediaError swaps in a
+  // <video> element via the onerror fallback chain.
+  return `<div class="media-wrapper"><img src="${mediaUrl}" alt="Challenge media" loading="lazy" onerror="handleMediaError(this)"/>${downloadBtn}</div>`;
 }
 
 function handleMediaError(element) {

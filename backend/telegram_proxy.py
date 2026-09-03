@@ -848,15 +848,15 @@ def upload_to_telegram(file_path: str, chat_id: str = None, bot_token: str = Non
         with _BOT_LOCKS[attempt_bot]:
             try:
                 with open(file_path, 'rb') as file:
-                    if media_kind == "image":
-                        url = f"{TELEGRAM_API_URL}/bot{attempt_bot}/sendPhoto"
-                        files = {'photo': file}
-                    elif media_kind == "video":
-                        url = f"{TELEGRAM_API_URL}/bot{attempt_bot}/sendVideo"
-                        files = {'video': file}
-                    else:
-                        url = f"{TELEGRAM_API_URL}/bot{attempt_bot}/sendDocument"
-                        files = {'document': file}
+                    # Use sendDocument for all uploads so original bytes
+                    # (including EXIF, IPTC, XMP, ICC profiles) are
+                    # preserved. sendPhoto/sendVideo re-encode server-side
+                    # and strip metadata, which breaks OSINT challenges
+                    # that rely on EXIF GPS/camera info. The frontend
+                    # renders images via <img> tag against /api/media/{id},
+                    # so inline Telegram preview is not required.
+                    url = f"{TELEGRAM_API_URL}/bot{attempt_bot}/sendDocument"
+                    files = {'document': file}
                     payload = {'chat_id': chat_id}
 
                     response = requests.post(url, files=files, data=payload, timeout=60)
@@ -873,12 +873,9 @@ def upload_to_telegram(file_path: str, chat_id: str = None, bot_token: str = Non
                     if not result.get("ok"):
                         raise Exception(result.get("description") or "Failed to upload to Telegram")
 
-                    if media_kind == "image":
-                        file_id = result["result"]["photo"][-1]["file_id"]
-                    elif media_kind == "video":
-                        file_id = result["result"]["video"]["file_id"]
-                    else:
-                        file_id = result["result"]["document"]["file_id"]
+                    # All uploads go through sendDocument now (see comment above),
+                    # so the result is always a document message.
+                    file_id = result["result"]["document"]["file_id"]
 
                     _mark_bot_success(attempt_bot)
                     return file_id, attempt_bot

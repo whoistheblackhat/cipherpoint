@@ -2359,6 +2359,12 @@ async function handleCommunityMediaChange(event) {
   const file = event.target.files?.[0];
   if (!file) return;
 
+  // The previous telegram_file_id (if any) refers to a file the user
+  // has now replaced, so clear it immediately. This prevents the user
+  // from submitting a challenge with a hidden file_id that points to
+  // a stale (or never-uploaded) Telegram file.
+  safeSetValue('communityFileId', '');
+
   // Validate file type
   const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm', 'video/quicktime'];
   if (!allowedTypes.includes(file.type)) {
@@ -2375,11 +2381,22 @@ async function handleCommunityMediaChange(event) {
     return;
   }
 
+  // Validate non-empty (browser may give 0-byte files in edge cases)
+  if (file.size === 0) {
+    showToast('❌ File is empty', 'error');
+    event.target.value = '';
+    return;
+  }
+
   // Upload file
   const fileId = await uploadMediaFile(file);
   if (fileId) {
     safeSetValue('communityFileId', fileId);
     showToast('✅ Media uploaded successfully', 'success');
+  } else {
+    // Upload failed — make sure the hidden id is empty so the form
+    // can't be submitted with a missing media reference.
+    safeSetValue('communityFileId', '');
   }
 }
 
@@ -2431,6 +2448,30 @@ async function handleCommunityChallengeSubmit(event) {
   }
   if (!body.telegram_file_id) {
     setFormError('Please upload media before publishing the challenge.');
+    return;
+  }
+  if (body.telegram_file_id.length < 20 || body.telegram_file_id.length > 256) {
+    setFormError('Media reference looks invalid. Please re-upload the file.');
+    return;
+  }
+  if (body.title.length > 120) {
+    setFormError('Title must be 120 characters or less.');
+    return;
+  }
+  if (body.description.length > 4000) {
+    setFormError('Description must be 4000 characters or less.');
+    return;
+  }
+  if (body.correct_flag.length > 200) {
+    setFormError('Flag must be 200 characters or less.');
+    return;
+  }
+  if (!['Easy', 'Medium', 'Hard'].includes(body.difficulty)) {
+    setFormError('Difficulty must be Easy, Medium, or Hard.');
+    return;
+  }
+  if (body.points_reward < 10 || body.points_reward > 1000) {
+    setFormError('Reward must be between 10 and 1000 coins.');
     return;
   }
   if (!body.correct_flag) {

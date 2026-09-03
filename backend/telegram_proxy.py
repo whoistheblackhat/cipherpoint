@@ -793,33 +793,43 @@ def get_telegram_file(file_id: str):
 
 
 def validate_media_duration(file_path: str, mime_type: str = "") -> None:
-    """Reject videos longer than 10 seconds when ffprobe is available."""
+    """Reject videos longer than 10 seconds when ffprobe is available.
+
+    Raises:
+        ValueError: when the duration exceeds the 10s cap, or the file
+            is unreadable.
+        FileNotFoundError: when ffprobe is not installed (so the caller
+            can decide whether to allow or block the upload).
+    """
     if not mime_type.startswith("video/"):
         return
 
     if not os.path.exists(file_path):
         return
 
-    try:
-        result = subprocess.run([
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            file_path,
-        ], capture_output=True, text=True, timeout=15)
-        if result.returncode != 0:
-            return
+    result = subprocess.run([
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        file_path,
+    ], capture_output=True, text=True, timeout=15)
+    if result.returncode != 0:
+        # ffprobe ran but failed: trust the file is broken and reject
+        raise ValueError(f"ffprobe could not read the video: {result.stderr.strip()[:200]}")
 
+    try:
         duration = float((result.stdout or "0").strip() or 0)
-        if duration > 10:
-            raise ValueError("Video duration must be 10 seconds or less.")
-    except (FileNotFoundError, ValueError, TypeError):
-        if mime_type.startswith("video/"):
-            return
+    except (TypeError, ValueError):
+        raise ValueError("Could not parse video duration")
+
+    if duration <= 0:
+        raise ValueError("Video has zero or negative duration")
+    if duration > 10:
+        raise ValueError("Video duration must be 10 seconds or less.")
 
 
 def upload_to_telegram(file_path: str, chat_id: str = None, bot_token: str = None):
@@ -893,11 +903,15 @@ def upload_to_telegram(file_path: str, chat_id: str = None, bot_token: str = Non
 
 
 def upload_media_to_channel(file_path: str, mime_type: str = "application/octet-stream", chat_id: str = None):
-    """Upload a file to Telegram channel using round-robin bot selection with retry."""
+    """Upload a file to Telegram channel using round-robin bot selection with retry.
+
+    The caller is responsible for running `validate_media_duration`
+    before calling this function. We do NOT re-validate here so that
+    the validation is single-sourced and a rejection surfaces once
+    instead of twice.
+    """
     if not file_path or not os.path.exists(file_path):
         raise ValueError("File does not exist")
-
-    validate_media_duration(file_path, mime_type)
 
     selected_channel = chat_id or TELEGRAM_CHANNEL_ID
 

@@ -148,11 +148,13 @@ class ChallengeCreateRequest(BaseModel):
     difficulty: str
     description: str
     correct_flag: str
+    telegram_file_id: str
     points_reward: int
     hint_1: str
     hint_1_cost: int = 10
     hint_2: Optional[str] = None
     hint_2_cost: int = 20
+    tags: Optional[str] = ""
 
     class Config:
         extra = "allow"
@@ -163,6 +165,7 @@ class CommunityChallengeCreateRequest(BaseModel):
     difficulty: str
     description: str
     correct_flag: str
+    telegram_file_id: str
     points_reward: int = 100
     hint_1: Optional[str] = None
     hint_1_cost: int = 10
@@ -173,6 +176,102 @@ class CommunityChallengeCreateRequest(BaseModel):
 
     class Config:
         extra = "allow"
+
+
+# Hard limits — these are not configurable per-user. They are absolute
+# bounds to prevent abuse (oversized DB rows, infinite-coin glitches,
+# etc.) and to keep the UI sane.
+CHALLENGE_TITLE_MAX = 120
+CHALLENGE_CATEGORY_MAX = 60
+CHALLENGE_DIFFICULTY_MAX = 20
+CHALLENGE_DESCRIPTION_MAX = 4000
+CHALLENGE_FLAG_MAX = 200
+CHALLENGE_TELEGRAM_FILE_ID_MAX = 256
+CHALLENGE_TAGS_MAX = 200
+CHALLENGE_HINT_MAX = 1000
+CHALLENGE_HINT_COST_MAX = 1000
+CHALLENGE_POINTS_MIN = 10
+CHALLENGE_POINTS_MAX = 1000
+ALLOWED_DIFFICULTIES = {"Easy", "Medium", "Hard"}
+ALLOWED_CATEGORIES_PREFIX = None  # categories are free-form today
+
+# Spam guard: titles/flags that are very common placeholders.
+_PLACEHOLDER_TITLES = {
+    "test", "test challenge", "asdf", "qwerty", "new challenge",
+    "challenge", "ctf", "ctf challenge", "untitled", "demo",
+    "sample", "example", "abc", "xyz", "123",
+}
+
+
+def _validate_text_lengths(payload, field_map):
+    for field, max_len in field_map.items():
+        value = getattr(payload, field, None)
+        if value is None:
+            continue
+        if len(value) > max_len:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{field.replace('_', ' ').capitalize()} is too long (max {max_len} characters).",
+            )
+
+
+def _validate_community_payload(payload: CommunityChallengeCreateRequest):
+    """Centralised validation for community challenges.
+
+    Catches:
+      - Empty / over-long text fields
+      - Invalid difficulty / points ranges
+      - Telegram file id length / charset
+      - Placeholder / spam titles
+    """
+    if not payload.disclaimer_accepted:
+        raise HTTPException(
+            status_code=400,
+            detail="You must accept the platform disclaimer before publishing a community challenge.",
+        )
+
+    _validate_text_lengths(payload, {
+        "title": CHALLENGE_TITLE_MAX,
+        "category": CHALLENGE_CATEGORY_MAX,
+        "difficulty": CHALLENGE_DIFFICULTY_MAX,
+        "description": CHALLENGE_DESCRIPTION_MAX,
+        "correct_flag": CHALLENGE_FLAG_MAX,
+        "telegram_file_id": CHALLENGE_TELEGRAM_FILE_ID_MAX,
+        "tags": CHALLENGE_TAGS_MAX,
+        "hint_1": CHALLENGE_HINT_MAX,
+        "hint_2": CHALLENGE_HINT_MAX,
+    })
+
+    if payload.difficulty not in ALLOWED_DIFFICULTIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Difficulty must be one of: {', '.join(sorted(ALLOWED_DIFFICULTIES))}",
+        )
+
+    if payload.points_reward < CHALLENGE_POINTS_MIN or payload.points_reward > CHALLENGE_POINTS_MAX:
+        raise HTTPException(
+            status_code=400,
+            detail=f"points_reward must be between {CHALLENGE_POINTS_MIN} and {CHALLENGE_POINTS_MAX}.",
+        )
+    if (payload.hint_1_cost or 0) < 0 or (payload.hint_1_cost or 0) > CHALLENGE_HINT_COST_MAX:
+        raise HTTPException(status_code=400, detail="hint_1_cost must be between 0 and 1000.")
+    if (payload.hint_2_cost or 0) < 0 or (payload.hint_2_cost or 0) > CHALLENGE_HINT_COST_MAX:
+        raise HTTPException(status_code=400, detail="hint_2_cost must be between 0 and 1000.")
+
+    # Telegram file IDs have a known charset. Reject anything weird
+    # before we waste a DB row on it.
+    if not re.fullmatch(r"[A-Za-z0-9_-]{20,256}", payload.telegram_file_id or ""):
+        raise HTTPException(
+            status_code=400,
+            detail="telegram_file_id is missing or has an invalid format. Please re-upload the media.",
+        )
+
+    title_norm = (payload.title or "").strip().lower()
+    if title_norm in _PLACEHOLDER_TITLES:
+        raise HTTPException(
+            status_code=400,
+            detail="That title looks like a placeholder. Please use a descriptive challenge title.",
+        )
 
 class ChallengeReportRequest(BaseModel):
     reason: str
@@ -205,6 +304,10 @@ def is_sensitive_identity_content(value: str) -> bool:
 
 
 def validate_community_submission(payload: CommunityChallengeCreateRequest):
+    """Legacy entry point. Kept for backward-compat with any caller
+    outside this module that imports it. Delegates to the new
+    _validate_community_payload and the sensitive-content check."""
+    _validate_community_payload(payload)
     combined = " ".join([
         payload.title or "",
         payload.category or "",
@@ -212,8 +315,6 @@ def validate_community_submission(payload: CommunityChallengeCreateRequest):
         payload.correct_flag or "",
         payload.tags or "",
     ])
-    if not payload.disclaimer_accepted:
-        raise HTTPException(status_code=400, detail="You must accept the platform disclaimer before publishing a community challenge.")
     if is_sensitive_identity_content(combined):
         raise HTTPException(status_code=400, detail="Personal identity or private data is not allowed on this platform.")
 
@@ -357,21 +458,29 @@ _is_primary_worker = _worker_id in ("0", "primary", "1")
 
 
 def purge_expired_community_challenges():
-    """Delete community challenges older than COMMUNITY_CTF_EXPIRY_DAYS along with their comments and hints."""
+    """Delete UNSOLVED community challenges older than COMMUNITY_CTF_EXPIRY_DAYS.
+
+    Solved challenges are kept indefinitely so users don't lose their
+    progress and the leaderboard history stays intact. Unsolved ones are
+    removed together with their comments, hints, and reports.
+    """
     db = SessionLocal()
     try:
         cutoff = datetime.utcnow() - timedelta(days=COMMUNITY_CTF_EXPIRY_DAYS)
-        expired = db.query(Challenge).filter(
+        # Find unsolved challenges past the cutoff
+        candidate = db.query(Challenge).filter(
             Challenge.is_community == True,
-            Challenge.created_at < cutoff
+            Challenge.created_at < cutoff,
         ).all()
+        solved_ids_subq = db.query(SolvedChallenge.challenge_id).subquery()
+        expired = [c for c in candidate if c.id not in {row[0] for row in db.query(SolvedChallenge.challenge_id).filter(SolvedChallenge.challenge_id.in_([c.id for c in candidate])).all()}]
 
         if not expired:
             return 0
 
         expired_ids = [c.id for c in expired]
         for c in expired:
-            print(f"[EXPIRY] Purging community CTF #{c.id} '{c.title}' (created {c.created_at})")
+            print(f"[EXPIRY] Purging unsolved community CTF #{c.id} '{c.title}' (created {c.created_at})")
 
         expired_comment_ids = [
             row[0] for row in db.query(Comment.id).filter(Comment.challenge_id.in_(expired_ids)).all()
@@ -381,16 +490,15 @@ def purge_expired_community_challenges():
             db.query(Comment).filter(
                 Comment.challenge_id.in_(expired_ids)
             ).update({Comment.parent_id: None}, synchronize_session=False)
-            deleted_comments += db.query(Comment).filter(
+            deleted_comments = db.query(Comment).filter(
                 Comment.id.in_(expired_comment_ids)
             ).delete(synchronize_session=False)
         deleted_hints = db.query(UnlockedHint).filter(UnlockedHint.challenge_id.in_(expired_ids)).delete(synchronize_session=False)
-        deleted_solves = db.query(SolvedChallenge).filter(SolvedChallenge.challenge_id.in_(expired_ids)).delete(synchronize_session=False)
         deleted_reports = db.query(ChallengeReport).filter(ChallengeReport.challenge_id.in_(expired_ids)).delete(synchronize_session=False)
         db.query(Challenge).filter(Challenge.id.in_(expired_ids)).delete(synchronize_session=False)
 
         db.commit()
-        print(f"[EXPIRY] Purged {len(expired_ids)} challenges, {deleted_comments} comments, {deleted_hints} hints, {deleted_solves} solves, {deleted_reports} reports")
+        print(f"[EXPIRY] Purged {len(expired_ids)} unsolved challenges, {deleted_comments} comments, {deleted_hints} hints, {deleted_reports} reports. Solved challenges were preserved.")
 
         if TELEGRAM_ADMIN_CHAT_ID and len(expired) > 0:
             try:
@@ -1564,20 +1672,14 @@ def create_challenge(
     db: Session = Depends(get_db)
 ):
     """Create new challenge (Admin only). Accepts JSON payload."""
+    _validate_community_payload(payload)
+
     title = payload.title.strip()
     category = payload.category.strip()
     difficulty = payload.difficulty.strip()
     description = payload.description.strip()
-    telegram_file_id = getattr(payload, "telegram_file_id", "").strip()
+    telegram_file_id = payload.telegram_file_id.strip()
     correct_flag = payload.correct_flag.strip()
-
-    if not all([title, category, difficulty, description, telegram_file_id, correct_flag]):
-        raise HTTPException(status_code=400, detail="All challenge fields are required")
-
-    if payload.points_reward < 0:
-        raise HTTPException(status_code=400, detail="points_reward must be >= 0")
-    if payload.hint_1_cost < 0 or payload.hint_2_cost < 0:
-        raise HTTPException(status_code=400, detail="Hint costs must be >= 0")
 
     new_challenge = Challenge(
         title=title,
@@ -1587,14 +1689,15 @@ def create_challenge(
         telegram_file_id=telegram_file_id,
         correct_flag=correct_flag,
         points_reward=payload.points_reward,
-        hint_1=payload.hint_1.strip() if payload.hint_1 else None,
+        hint_1=(payload.hint_1 or "").strip() or None,
         hint_1_cost=payload.hint_1_cost,
-        hint_2=payload.hint_2.strip() if payload.hint_2 else None,
+        hint_2=(payload.hint_2 or "").strip() or None,
         hint_2_cost=payload.hint_2_cost,
         created_by=user.id,
         status="approved",
         is_community=False,
         disclaimer_accepted=True,
+        tags=(payload.tags or "").strip(),
     )
 
     db.add(new_challenge)
@@ -1621,22 +1724,42 @@ def create_community_challenge(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     ensure_user_not_banned(user_id, db)
-    validate_community_submission(payload)
+
+    # Length / type / range validation (single source of truth)
+    _validate_community_payload(payload)
+
+    # Identity-content policy check
+    combined = " ".join([
+        payload.title or "",
+        payload.category or "",
+        payload.description or "",
+        payload.correct_flag or "",
+        payload.tags or "",
+    ])
+    if is_sensitive_identity_content(combined):
+        raise HTTPException(status_code=400, detail="Personal identity or private data is not allowed on this platform.")
+
+    # Spam guard: reject obvious duplicates (same title + flag from the
+    # same user within the last 24 hours).
+    from datetime import timedelta as _td
+    recent_dup = db.query(Challenge).filter(
+        Challenge.created_by == user_id,
+        Challenge.title == payload.title.strip(),
+        Challenge.correct_flag == payload.correct_flag.strip(),
+        Challenge.created_at >= datetime.utcnow() - _td(hours=24),
+    ).first()
+    if recent_dup:
+        raise HTTPException(
+            status_code=409,
+            detail="You already published a challenge with this title and flag in the last 24 hours.",
+        )
 
     title = payload.title.strip()
     category = payload.category.strip()
     difficulty = payload.difficulty.strip()
     description = payload.description.strip()
-    telegram_file_id = getattr(payload, "telegram_file_id", "").strip()
+    telegram_file_id = payload.telegram_file_id.strip()
     correct_flag = payload.correct_flag.strip()
-
-    if not all([title, category, difficulty, description, telegram_file_id, correct_flag]):
-        raise HTTPException(status_code=400, detail="All challenge fields are required")
-
-    if payload.points_reward < 0:
-        raise HTTPException(status_code=400, detail="points_reward must be >= 0")
-    if payload.hint_1_cost < 0 or payload.hint_2_cost < 0:
-        raise HTTPException(status_code=400, detail="Hint costs must be >= 0")
 
     reserve_community_quota(user, db)
     new_challenge = Challenge(
@@ -1647,9 +1770,9 @@ def create_community_challenge(
         telegram_file_id=telegram_file_id,
         correct_flag=correct_flag,
         points_reward=payload.points_reward,
-        hint_1=payload.hint_1.strip() if payload.hint_1 else None,
+        hint_1=(payload.hint_1 or "").strip() or None,
         hint_1_cost=payload.hint_1_cost,
-        hint_2=payload.hint_2.strip() if payload.hint_2 else None,
+        hint_2=(payload.hint_2 or "").strip() or None,
         hint_2_cost=payload.hint_2_cost,
         created_by=user_id,
         status="approved",
@@ -1669,6 +1792,9 @@ def create_community_challenge(
         user.weekly_reset_at = datetime.utcnow() + timedelta(days=7 if COMMUNITY_CTF_WEEKLY_LIMIT > 0 else 365)
     db.commit()
     db.refresh(new_challenge)
+
+    # Invalidate cached challenge list (a new challenge was added)
+    _cache_clear_prefix("challenges:")
 
     if COMMUNITY_CTF_WEEKLY_LIMIT <= 0:
         remaining = None  # unlimited
@@ -2033,28 +2159,66 @@ def unlock_hint(payload: HintRequest, user_id: int = Depends(verify_token), db: 
 # ==================== SUBMISSION ROUTES ====================
 
 @app.post("/api/challenges/submit")
-def submit_flag(payload: FlagSubmitRequest, user_id: int = Depends(verify_token), db: Session = Depends(get_db)):
-    """Submit a flag/answer for a challenge"""
+def submit_flag(
+    payload: FlagSubmitRequest,
+    request: Request,
+    user_id: int = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    """Submit a flag/answer for a challenge.
+
+    Defenses:
+      - Per-IP rate limit (30 attempts / 5 min) to slow down brute-force
+      - Refuse to award points to the challenge author (no self-solving
+        for infinite-coin glitches)
+      - Sanity-check the submitted flag length
+    """
+    from security import rate_limit_check
+
+    # Per-IP rate limit (defense against brute-force on the flag value)
+    ip = request.client.host if request.client else "unknown"
+    allowed, retry = rate_limit_check(f"submit_ip:{ip}", max_events=30, window_seconds=300)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many submission attempts from this network. Try again in {retry}s.",
+            headers={"Retry-After": str(retry)},
+        )
+
     challenge_id = payload.challenge_id
-    flag = payload.flag
+    flag = (payload.flag or "").strip()
+    if not challenge_id or not flag:
+        raise HTTPException(status_code=400, detail="challenge_id and flag are required")
+    if len(flag) > CHALLENGE_FLAG_MAX:
+        raise HTTPException(status_code=400, detail="Flag is too long")
+
     challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found")
     ensure_user_not_banned(user_id, db)
     if challenge.status in {"rejected", "removed"}:
         raise HTTPException(status_code=404, detail="Challenge not found")
+
+    # Refuse self-solving (community-challenge infinite-coin glitch).
+    if challenge.created_by and challenge.created_by == user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You cannot solve your own challenge.",
+        )
+
     already_solved = db.query(SolvedChallenge).filter(
         (SolvedChallenge.user_id == user_id) &
         (SolvedChallenge.challenge_id == challenge_id)
     ).first()
     if already_solved:
         return {"success": False, "message": "You already solved this challenge!"}
-    if flag.strip().lower() == challenge.correct_flag.lower():
+
+    if flag.lower() == (challenge.correct_flag or "").strip().lower():
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
-        user.coins += challenge.points_reward
-        user.rank_points += challenge.points_reward
+        user.coins = (user.coins or 0) + (challenge.points_reward or 0)
+        user.rank_points = (user.rank_points or 0) + (challenge.points_reward or 0)
         solved_challenge = SolvedChallenge(user_id=user_id, challenge_id=challenge_id)
         db.add(solved_challenge)
         db.commit()
@@ -2150,6 +2314,10 @@ async def upload_media(
             tmp_path = tmp_file.name
             contents = await file.read()
 
+            if not contents:
+                os.unlink(tmp_path)
+                raise HTTPException(status_code=400, detail="File is empty")
+
             if len(contents) > size_limit:
                 os.unlink(tmp_path)
                 raise HTTPException(status_code=413, detail=f"File too large. Max size: {size_limit // (1024*1024)}MB")
@@ -2186,6 +2354,14 @@ async def upload_media(
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
         raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        # ffprobe (or another subprocess dep) is missing on this host.
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise HTTPException(
+            status_code=503,
+            detail=f"Server is missing a required tool to process this file ({e.filename or 'ffprobe'}).",
+        )
     except Exception as e:
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)

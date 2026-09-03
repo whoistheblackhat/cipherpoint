@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, Header, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 # Workaround: starlette 0.26 uses `anyio.to_thread` lazily.
@@ -1963,30 +1963,50 @@ def get_media(file_id: str, download: int = 0, request: Request = None):
         print(f"[MEDIA] Failed to fetch {file_id[:24]}...: {e}")
         raise HTTPException(status_code=404, detail="Media unavailable")
 
-    if download:
-        # Guess extension from content-type
-        ct = response.headers.get("content-type", "").lower()
-        if ct.startswith("video/"):
-            ext = ".mp4"
-        elif ct.startswith("image/jpeg") or ct.startswith("image/jpg"):
-            ext = ".jpg"
-        elif ct.startswith("image/png"):
-            ext = ".png"
-        elif ct.startswith("image/webp"):
-            ext = ".webp"
-        elif ct.startswith("image/gif"):
-            ext = ".gif"
-        else:
-            ext = ""
-        filename = f"cipherpoint-media-{file_id[:12]}{ext}"
-        # Build a new response so we can override the disposition
-        from fastapi.responses import Response
-        body = response.body if hasattr(response, "body") else b""
-        new_headers = dict(response.headers)
-        new_headers["Content-Disposition"] = f'attachment; filename="{filename}"'
-        new_headers["Cache-Control"] = "private, max-age=300"
-        return Response(content=body, headers=new_headers, media_type=ct or "application/octet-stream", status_code=response.status_code)
-    return response
+    if not download:
+        return response
+
+    # For downloads, build a fresh StreamingResponse so we can override
+    # Content-Disposition without buffering the whole file in memory.
+    ct = response.headers.get("content-type", "").lower() or "application/octet-stream"
+    if ct.startswith("video/"):
+        ext = ".mp4"
+    elif ct.startswith("image/jpeg") or ct.startswith("image/jpg"):
+        ext = ".jpg"
+    elif ct.startswith("image/png"):
+        ext = ".png"
+    elif ct.startswith("image/webp"):
+        ext = ".webp"
+    elif ct.startswith("image/gif"):
+        ext = ".gif"
+    else:
+        ext = ""
+    filename = f"cipherpoint-media-{file_id[:12]}{ext}"
+
+    # Pull the underlying iterator from the original StreamingResponse and
+    # wrap it again with the new Content-Disposition header. The body
+    # has not been consumed yet (FastAPI hands the response back to
+    # starlette which iterates it during send).
+    body_iter = response.body_iterator if hasattr(response, "body_iterator") else None
+    if body_iter is None:
+        # Fallback: buffer the whole thing. Not ideal but safe.
+        return Response(
+            content=response.body if hasattr(response, "body") else b"",
+            media_type=ct,
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Cache-Control": "private, max-age=300",
+            },
+        )
+
+    return StreamingResponse(
+        body_iter,
+        media_type=ct,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "private, max-age=300",
+        },
+    )
 
 # ==================== HEALTH CHECK ====================
 

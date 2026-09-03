@@ -2662,8 +2662,10 @@ body[data-page="signup"] > canvas#networkCanvas {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: -80px;
-  transform: translateX(-50%);
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translate(-50%, calc(100% + 24px));
+  width: max-content;
+  max-width: min( calc(100vw - 32px), 480px);
   padding: 0.82rem 1.2rem;
   border-radius: 12px;
   border: 1px solid var(--line);
@@ -2671,11 +2673,16 @@ body[data-page="signup"] > canvas#networkCanvas {
   background: linear-gradient(135deg, var(--primary) 0%, var(--teal) 100%);
   font-weight: 700;
   z-index: 2000;
-  transition: bottom 0.25s ease;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform 0.25s ease, opacity 0.2s ease, visibility 0.2s ease;
 }
 
 .toast.show {
-  bottom: 24px;
+  transform: translate(-50%, 0);
+  opacity: 1;
+  visibility: visible;
 }
 
 .toast.error {

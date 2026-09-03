@@ -5,6 +5,7 @@ import subprocess
 import threading
 import time as _time
 import time
+from datetime import datetime
 from typing import List, Tuple, Optional
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
@@ -170,6 +171,19 @@ def send_telegram_photo_with_buttons(chat_id: str, photo_file_id: str, caption: 
     return response.json()
 
 
+def answer_callback_query(callback_query_id: str, text: str = ""):
+    """Stop Telegram's inline-button loading state."""
+    token = TELEGRAM_ADMIN_BOT_TOKEN or (TELEGRAM_BOT_TOKENS[0] if TELEGRAM_BOT_TOKENS else "")
+    if not token or not callback_query_id:
+        return
+    response = requests.post(
+        f"{TELEGRAM_API_URL}/bot{token}/answerCallbackQuery",
+        json={"callback_query_id": callback_query_id, "text": text[:200]},
+        timeout=10,
+    )
+    response.raise_for_status()
+
+
 def _handle_admin_command(update: dict, db_factory):
     from models import User, Challenge, ChallengeReport, UserBan
 
@@ -182,7 +196,15 @@ def _handle_admin_command(update: dict, db_factory):
         data = callback_query.get("data", "")
         callback_chat_id = str(callback_query.get("message", {}).get("chat", {}).get("id", ""))
         if TELEGRAM_ADMIN_CHAT_ID and callback_chat_id == str(TELEGRAM_ADMIN_CHAT_ID):
-            _handle_admin_callback(data, db_factory)
+            try:
+                result = _handle_admin_callback(data, db_factory)
+                answer_callback_query(callback_query.get("id", ""), result or "Action completed")
+            except Exception as e:
+                print(f"Admin callback error: {e}")
+                try:
+                    answer_callback_query(callback_query.get("id", ""), "Action failed")
+                except Exception as callback_error:
+                    print(f"Admin callback acknowledgement failed: {callback_error}")
         return
 
     if not TELEGRAM_ADMIN_CHAT_ID or chat_id != str(TELEGRAM_ADMIN_CHAT_ID):
@@ -207,16 +229,13 @@ def _handle_admin_command(update: dict, db_factory):
             send_telegram_message(TELEGRAM_ADMIN_CHAT_ID, "\n".join(lines))
 
         elif text.startswith("/approve "):
-            report_id = int(text.split()[1])
-            _resolve_report(db, report_id, "approve")
+            _resolve_command_report(db, text, "approve")
 
         elif text.startswith("/reject "):
-            report_id = int(text.split()[1])
-            _resolve_report(db, report_id, "reject")
+            _resolve_command_report(db, text, "reject")
 
         elif text.startswith("/ban "):
-            report_id = int(text.split()[1])
-            _resolve_report(db, report_id, "ban")
+            _resolve_command_report(db, text, "ban")
 
         elif text == "/status":
             from models import User as _User, Challenge as _Challenge, ChallengeReport as _Report
@@ -329,57 +348,90 @@ def _handle_admin_command(update: dict, db_factory):
         db.close()
 
 
+def _parse_report_id(command: str) -> int:
+    parts = command.split()
+    if len(parts) != 2 or not parts[1].isdigit():
+        raise ValueError("Report ID must be a number")
+    return int(parts[1])
+
+
+def _resolve_command_report(db: Session, command: str, action: str):
+    try:
+        report_id = _parse_report_id(command)
+    except ValueError as error:
+        send_telegram_message(TELEGRAM_ADMIN_CHAT_ID, f"❌ {error}")
+        return
+    _resolve_report(db, report_id, action)
+
+
 def _handle_admin_callback(data: str, db_factory):
     """Handle inline keyboard button clicks."""
-    from models import User, Challenge, ChallengeReport, UserBan
-
-    parts = data.split("_")
-    action = parts[0]
-    report_id = int(parts[1]) if len(parts) > 1 else 0
+    parts = data.split("_", 1)
+    action = parts[0].strip().lower()
+    try:
+        report_id = int(parts[1]) if len(parts) > 1 else 0
+    except (TypeError, ValueError):
+        report_id = 0
 
     db = db_factory()
     try:
-        _resolve_report(db, report_id, action)
+        message = _resolve_report(db, report_id, action)
     finally:
         db.close()
+    return message
 
 
 def _resolve_report(db: Session, report_id: int, action: str):
     """Resolve a report with the given action."""
     from models import ChallengeReport, Challenge, UserBan
 
+    if action not in {"approve", "reject", "ban"}:
+        return "❌ Invalid moderation action."
+
     report = db.query(ChallengeReport).filter(ChallengeReport.id == report_id).first()
     if not report:
-        send_telegram_message(TELEGRAM_ADMIN_CHAT_ID, "❌ Report not found.")
-        return
+        return "❌ Report not found."
 
     challenge = db.query(Challenge).filter(Challenge.id == report.challenge_id).first()
+    admin = db.query(User).filter(User.is_admin == True).order_by(User.id.asc()).first()
+    if not admin:
+        return "❌ No admin account available to record this action."
 
     if action == "approve":
         report.status = "resolved"
+        report.resolved_at = datetime.utcnow()
+        report.resolved_by = admin.id
         db.commit()
-        send_telegram_message(TELEGRAM_ADMIN_CHAT_ID, f"✅ Report #{report_id} approved.")
+        message = f"✅ Report #{report_id} approved."
 
     elif action == "reject":
         if challenge:
             challenge.status = "removed"
         report.status = "resolved"
+        report.resolved_at = datetime.utcnow()
+        report.resolved_by = admin.id
         db.commit()
-        send_telegram_message(TELEGRAM_ADMIN_CHAT_ID, f"🗑️ Report #{report_id} rejected. Challenge hidden.")
+        message = f"🗑️ Report #{report_id} rejected. Challenge hidden."
 
     elif action == "ban":
         if challenge:
             challenge.status = "removed"
         existing_ban = db.query(UserBan).filter(UserBan.user_id == report.reporter_id).first()
         if not existing_ban:
-            admin = db.query(User).filter(User.is_admin == True).order_by(User.id.asc()).first()
-            if not admin:
-                send_telegram_message(TELEGRAM_ADMIN_CHAT_ID, "❌ No admin account available to record the ban.")
-                return
             db.add(UserBan(user_id=report.reporter_id, reason="Report violation", banned_by=admin.id))
         report.status = "resolved"
+        report.resolved_at = datetime.utcnow()
+        report.resolved_by = admin.id
         db.commit()
-        send_telegram_message(TELEGRAM_ADMIN_CHAT_ID, f"🚫 Report #{report_id} resolved with ban.")
+        message = f"🚫 Report #{report_id} resolved with ban."
+
+    try:
+        from main import _cache_clear_prefix
+        _cache_clear_prefix("challenges:")
+    except ImportError:
+        pass
+    send_telegram_message(TELEGRAM_ADMIN_CHAT_ID, message)
+    return message
 
 
 def start_admin_bot_polling(db_factory):

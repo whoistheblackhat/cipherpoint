@@ -1431,11 +1431,11 @@ def report_challenge(
             try:
                 caption = (
                     f"🚨 <b>New Challenge Report</b>\n\n"
-                    f"Challenge: #{challenge_id} - {challenge.title}\n"
-                    f"Category: {challenge.category} | Difficulty: {challenge.difficulty}\n"
-                    f"Reported by: {reporter_name}\n"
-                    f"Reason: {reason}\n"
-                    f"Details: {details}\n\n"
+                    f"Challenge: #{challenge_id} - {escape_html(challenge.title)}\n"
+                    f"Category: {escape_html(challenge.category)} | Difficulty: {escape_html(challenge.difficulty)}\n"
+                    f"Reported by: {escape_html(reporter_name)}\n"
+                    f"Reason: {escape_html(reason)}\n"
+                    f"Details: {escape_html(details)}\n\n"
                     f"Take action below:"
                 )
 
@@ -1516,7 +1516,7 @@ def resolve_moderation_report(
 
     challenge = db.query(Challenge).filter(Challenge.id == report.challenge_id).first()
     if action == "reject" and challenge:
-        challenge.status = "rejected"
+        challenge.status = "removed"
     elif action == "ban":
         if challenge:
             challenge.status = "removed"
@@ -1528,6 +1528,7 @@ def resolve_moderation_report(
     report.resolved_at = datetime.utcnow()
     report.resolved_by = admin_user.id
     db.commit()
+    _cache_clear_prefix("challenges:")
     return {"message": f"Report resolved via {action}", "status": "resolved"}
 
 

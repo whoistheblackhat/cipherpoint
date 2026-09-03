@@ -1147,7 +1147,7 @@ def get_challenge_details(challenge_id: int, db: Session = Depends(get_db)):
     """Get detailed view of a challenge (WITHOUT flag or hints)"""
     challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
     
-    if not challenge:
+    if not challenge or challenge.status in {"rejected", "removed"}:
         raise HTTPException(status_code=404, detail="Challenge not found")
     
     solved_count = db.query(SolvedChallenge).filter(SolvedChallenge.challenge_id == challenge_id).count()
@@ -1160,8 +1160,8 @@ def get_challenge_details(challenge_id: int, db: Session = Depends(get_db)):
         "description": challenge.description,
         "telegram_file_id": challenge.telegram_file_id,
         "points_reward": challenge.points_reward,
-        "hint_1": challenge.hint_1,
-        "hint_2": challenge.hint_2,
+        "has_hint_1": bool(challenge.hint_1),
+        "has_hint_2": bool(challenge.hint_2),
         "hint_1_cost": challenge.hint_1_cost,
         "hint_2_cost": challenge.hint_2_cost,
         "tags": challenge.tags,

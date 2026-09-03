@@ -79,7 +79,7 @@ function buildTagPills(tagsText, fallbackLabel = 'Open') {
   const finalValues = values.length ? values : [fallbackLabel];
 
   return finalValues.slice(0, 3).map((tag) => `
-    <span class="mini-tag">${tag}</span>
+    <span class="mini-tag">${escapeHtml(tag)}</span>
   `).join('');
 }
 
@@ -1089,10 +1089,10 @@ async function loadModerationQueue() {
     container.innerHTML = reports.map((report) => `
       <div class="report-item">
         <div class="report-head">
-          <strong>${report.challenge_title}</strong>
-          <span>${report.reason}</span>
+          <strong>${escapeHtml(report.challenge_title)}</strong>
+          <span>${escapeHtml(report.reason)}</span>
         </div>
-        <div class="report-meta">Reported by ${report.reporter}</div>
+        <div class="report-meta">Reported by ${escapeHtml(report.reporter)}</div>
         <div class="report-actions">
           <button type="button" class="mini-btn success" data-action="approve" data-report-id="${report.id}">Approve</button>
           <button type="button" class="mini-btn danger" data-action="reject" data-report-id="${report.id}">Reject</button>
@@ -2355,8 +2355,8 @@ async function loadChallengeDetailPage(challengeId) {
 
     const detailHints = safeGetById('detailHints');
     if (detailHints) {
-      const hint1 = challenge.hint_1;
-      const hint2 = challenge.hint_2;
+      const hint1 = challenge.has_hint_1;
+      const hint2 = challenge.has_hint_2;
       const hint1Cost = challenge.hint_1_cost || 10;
       const hint2Cost = challenge.hint_2_cost || 20;
 

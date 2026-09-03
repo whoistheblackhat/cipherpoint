@@ -1971,6 +1971,21 @@ input:focus {
   font-size: 0.87rem;
 }
 
+.form-message-inline {
+  min-height: 20px;
+  font-size: 0.87rem;
+  margin: 0.5rem 0;
+  color: var(--muted);
+}
+
+.form-message-inline.error {
+  color: var(--danger);
+}
+
+.form-message-inline.success {
+  color: var(--success);
+}
+
 .form-message.error {
   color: var(--danger);
 }

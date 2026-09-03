@@ -835,7 +835,7 @@ async function handleLogin(event) {
   if (!username || !password) {
     if (messageBox) {
       messageBox.textContent = 'Username and password are required';
-      messageBox.classList.add('error');
+      messageBox.className = 'form-message-inline error';
     }
     return;
   }
@@ -859,8 +859,7 @@ async function handleLogin(event) {
       );
       if (messageBox) {
         messageBox.textContent = errorMessage;
-        messageBox.classList.add('error');
-        messageBox.classList.remove('success');
+        messageBox.className = 'form-message-inline error';
       }
       showToast(`🚫 ${errorMessage}`, 'error');
       if (window.turnstile) {
@@ -876,7 +875,7 @@ async function handleLogin(event) {
 
     if (messageBox) {
       messageBox.textContent = 'Login successful';
-      messageBox.classList.remove('error');
+      messageBox.className = 'form-message-inline success';
     }
 
     showToast('✅ Login successful', 'success');
@@ -884,7 +883,7 @@ async function handleLogin(event) {
   } catch (error) {
     if (messageBox) {
       messageBox.textContent = 'Network error. Please try again.';
-      messageBox.classList.add('error');
+      messageBox.className = 'form-message-inline error';
     }
     showToast('❌ Network error', 'error');
   }
@@ -1046,7 +1045,7 @@ async function handleSignup(event) {
   if (!username || !email || !password) {
     if (messageBox) {
       messageBox.textContent = 'All fields are required';
-      messageBox.classList.add('error');
+      messageBox.className = 'form-message-inline error';
     }
     return;
   }
@@ -1054,7 +1053,7 @@ async function handleSignup(event) {
   if (!/^[A-Za-z0-9_.-]{3,32}$/.test(username)) {
     if (messageBox) {
       messageBox.textContent = 'Username must be 3-32 chars (letters, digits, . _ -)';
-      messageBox.classList.add('error');
+      messageBox.className = 'form-message-inline error';
     }
     return;
   }
@@ -1062,7 +1061,7 @@ async function handleSignup(event) {
   if (!/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(email)) {
     if (messageBox) {
       messageBox.textContent = 'Please enter a valid email address';
-      messageBox.classList.add('error');
+      messageBox.className = 'form-message-inline error';
     }
     return;
   }
@@ -1070,7 +1069,7 @@ async function handleSignup(event) {
   if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
     if (messageBox) {
       messageBox.textContent = 'Password must be 8+ chars and contain a letter and a digit';
-      messageBox.classList.add('error');
+      messageBox.className = 'form-message-inline error';
     }
     return;
   }
@@ -1078,7 +1077,7 @@ async function handleSignup(event) {
   if (password !== confirmPassword) {
     if (messageBox) {
       messageBox.textContent = 'Passwords do not match';
-      messageBox.classList.add('error');
+      messageBox.className = 'form-message-inline error';
     }
     return;
   }
@@ -1097,7 +1096,7 @@ async function handleSignup(event) {
     if (!response.ok) {
       if (messageBox) {
         messageBox.textContent = data.detail || 'Signup failed';
-        messageBox.classList.add('error');
+        messageBox.className = 'form-message-inline error';
       }
       if (window.turnstile) {
         try { window.turnstile.reset(); } catch (e) {}
@@ -1112,7 +1111,7 @@ async function handleSignup(event) {
 
     if (messageBox) {
       messageBox.textContent = 'Account created successfully';
-      messageBox.classList.remove('error');
+      messageBox.className = 'form-message-inline success';
     }
 
     showToast('🎉 Account created successfully', 'success');
@@ -1120,7 +1119,7 @@ async function handleSignup(event) {
   } catch (error) {
     if (messageBox) {
       messageBox.textContent = 'Network error. Please try again.';
-      messageBox.classList.add('error');
+      messageBox.className = 'form-message-inline error';
     }
     showToast('❌ Network error', 'error');
   }
@@ -2430,7 +2429,7 @@ async function handleCommunityChallengeSubmit(event) {
   const setFormError = (msg) => {
     if (messageBox) {
       messageBox.textContent = msg;
-      messageBox.classList.add('error');
+      messageBox.className = 'form-message show error';
     }
   };
 
@@ -2494,7 +2493,7 @@ async function handleCommunityChallengeSubmit(event) {
       const errorMsg = data.detail || 'Unable to publish challenge';
       if (messageBox) {
         messageBox.textContent = errorMsg;
-        messageBox.classList.add('error');
+        messageBox.className = 'form-message show error';
       }
       if (response.status === 429) {
         showToast('⚠️ Weekly quota reached', 'error');
@@ -2508,25 +2507,24 @@ async function handleCommunityChallengeSubmit(event) {
 
     const quota = data.quota;
     const successMsg = quota
-      ? `Published! ${quota.remaining} of ${quota.limit} weekly CTF(s) remaining.`
+      ? `Published! ${quota.remaining ?? '∞'} of ${quota.limit} weekly CTF(s) remaining.`
       : 'Community challenge published successfully';
     form.reset();
+    safeSetValue('communityFileId', '');
     const modal = safeGetById('communityModal');
     if (modal) modal.classList.remove('active');
     if (messageBox) {
       messageBox.textContent = successMsg;
-      messageBox.classList.remove('error');
+      messageBox.className = 'form-message show success';
     }
     showToast(`✅ ${successMsg}`, 'success');
     await loadCommunityChallenges();
     return;
-    showToast('✅ Community challenge published', 'success');
-    await loadCommunityChallenges();
   } catch (error) {
     console.error('Error publishing community challenge:', error);
     if (messageBox) {
       messageBox.textContent = 'Network error. Please try again.';
-      messageBox.classList.add('error');
+      messageBox.className = 'form-message show error';
     }
     showToast('❌ Publish failed', 'error');
   }

@@ -371,9 +371,12 @@ def _handle_admin_command(update: dict, db_factory):
 
 def _parse_report_id(command: str) -> int:
     parts = command.split()
-    if len(parts) != 2 or not parts[1].isdigit():
-        raise ValueError("Report ID must be a number")
-    return int(parts[1])
+    if len(parts) != 2:
+        raise ValueError("Usage: /approve <id> (for example, /approve 3)")
+    report_id = parts[1].lstrip("#")
+    if not report_id.isdigit() or int(report_id) <= 0:
+        raise ValueError("Report ID must be a positive number, for example 3 or #3")
+    return int(report_id)
 
 
 def _resolve_command_report(db: Session, command: str, action: str):
@@ -382,7 +385,8 @@ def _resolve_command_report(db: Session, command: str, action: str):
     except ValueError as error:
         send_telegram_message(TELEGRAM_ADMIN_CHAT_ID, f"❌ {error}")
         return
-    _resolve_report(db, report_id, action)
+    result = _resolve_report(db, report_id, action, notify=False)
+    send_telegram_message(TELEGRAM_ADMIN_CHAT_ID, result or "✅ Action completed.")
 
 
 def _handle_admin_callback(data: str, db_factory, callback_message: dict):

@@ -140,8 +140,36 @@ function safeSetValue(id, value) {
   }
 }
 
+function showLoadingScreen() {
+  if (document.getElementById('cyberLoadingScreen')) return;
+
+  const screen = document.createElement('div');
+  screen.id = 'cyberLoadingScreen';
+  screen.className = 'cyber-loading-screen';
+  screen.setAttribute('role', 'status');
+  screen.setAttribute('aria-live', 'polite');
+  screen.innerHTML = `
+    <div class="cyber-loader" aria-hidden="true">
+      <span class="cyber-loader-ring"></span>
+      <span class="cyber-loader-core"><i class="fa-solid fa-user-secret"></i></span>
+    </div>
+    <div class="cyber-loader-title">ESTABLISHING SECURE LINK</div>
+    <div class="cyber-loader-status"><span></span><span></span><span></span></div>
+    <div class="cyber-loader-subtitle">Decrypting intelligence workspace...</div>
+  `;
+  document.body.appendChild(screen);
+}
+
+function hideLoadingScreen() {
+  const screen = document.getElementById('cyberLoadingScreen');
+  if (!screen) return;
+  screen.classList.add('is-hidden');
+  window.setTimeout(() => screen.remove(), 280);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-  initializePage();
+  showLoadingScreen();
+  initializePage().finally(hideLoadingScreen);
 });
 
 async function initializePage() {

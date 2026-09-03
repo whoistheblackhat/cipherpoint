@@ -148,6 +148,7 @@ function showLoadingScreen() {
   screen.className = 'cyber-loading-screen';
   screen.setAttribute('role', 'status');
   screen.setAttribute('aria-live', 'polite');
+  screen.dataset.startedAt = String(Date.now());
   screen.innerHTML = `
     <div class="cyber-loader" aria-hidden="true">
       <span class="cyber-loader-ring"></span>
@@ -163,8 +164,12 @@ function showLoadingScreen() {
 function hideLoadingScreen() {
   const screen = document.getElementById('cyberLoadingScreen');
   if (!screen) return;
-  screen.classList.add('is-hidden');
-  window.setTimeout(() => screen.remove(), 280);
+  const startedAt = Number(screen.dataset.startedAt || Date.now());
+  const remaining = Math.max(0, 450 - (Date.now() - startedAt));
+  window.setTimeout(() => {
+    screen.classList.add('is-hidden');
+    window.setTimeout(() => screen.remove(), 280);
+  }, remaining);
 }
 
 document.addEventListener('DOMContentLoaded', () => {

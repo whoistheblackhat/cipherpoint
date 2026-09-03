@@ -2502,7 +2502,7 @@ body[data-page="signup"] > canvas#networkCanvas {
 
 .badge-showcase {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 18px;
 }
 
@@ -3571,6 +3571,9 @@ body[data-page="signup"] > canvas#networkCanvas {
   .profile-grid {
     grid-template-columns: 1fr;
   }
+  .badge-showcase {
+    grid-template-columns: 1fr;
+  }
   .modal-card {
     margin: 10px;
     padding: 18px;
@@ -3590,10 +3593,10 @@ body[data-page="signup"] > canvas#networkCanvas {
     font-size: 1rem;
   }
   .sidebar-link span {
-    display: none;
+    display: inline;
   }
   .sidebar-links {
-    justify-content: center;
+    justify-content: flex-start;
   }
   .sidebar-nav {
     padding: 10px 12px;

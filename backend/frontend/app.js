@@ -1949,7 +1949,7 @@ async function renderTopChallenges() {
     container.innerHTML = challenges.slice(0, 5).map((challenge) => `
       <div class="sidebar-item" onclick="openChallengeModal(${challenge.id})">
         <div class="sidebar-item-thumb">
-          ${challenge.telegram_file_id ? `<img src="/api/media/${challenge.telegram_file_id}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">` : '<i class="fa-solid fa-image" style="color:#8b949e;font-size:1.2rem;"></i>'}
+          ${challenge.telegram_file_id ? `<img src="/api/media/${encodeURIComponent(challenge.telegram_file_id)}" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='<i class=\\'fa-solid fa-image\\' style=\\'color:#8b949e;font-size:1.2rem;\\'></i>';" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">` : '<i class="fa-solid fa-image" style="color:#8b949e;font-size:1.2rem;"></i>'}
         </div>
         <div class="sidebar-item-body">
           <div class="sidebar-item-title">${escapeHtml(challenge.title)}</div>
@@ -2010,11 +2010,42 @@ function renderMedia(fileId) {
   if (!fileId) {
     return '<span class="media-placeholder"><i class="fa-solid fa-image"></i><span>Media unavailable</span></span>';
   }
+  const mediaUrl = `/api/media/${encodeURIComponent(fileId)}`;
   const isVideo = fileId.startsWith('BAAC') || fileId.startsWith('BAAD') || fileId.startsWith('BAABAg');
   if (isVideo) {
-    return `<video src="/api/media/${fileId}" controls preload="metadata" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=\\'media-placeholder\\'><i class=\\'fa-solid fa-video\\'></i><span>Video unavailable</span></span>'"></video>`;
+    return `<video src="${mediaUrl}" controls preload="metadata" onerror="handleMediaError(this)"></video>`;
   }
-  return `<img src="/api/media/${fileId}" alt="Challenge media" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=\\'media-placeholder\\'><i class=\\'fa-solid fa-broken-image\\'></i><span>Media unavailable</span></span>'"/>`;
+  return `<img src="${mediaUrl}" alt="Challenge media" loading="lazy" onerror="handleMediaError(this)"/>`;
+}
+
+function handleMediaError(element) {
+  if (!element || element.dataset.mediaFallbackAttempted === 'true') {
+    if (element) {
+      element.style.display = 'none';
+      element.parentElement.innerHTML = '<span class="media-placeholder"><i class="fa-solid fa-broken-image"></i><span>Media unavailable</span></span>';
+    }
+    return;
+  }
+
+  element.dataset.mediaFallbackAttempted = 'true';
+  const fallback = element.tagName === 'VIDEO'
+    ? document.createElement('img')
+    : document.createElement('video');
+  fallback.src = element.currentSrc || element.src;
+  fallback.dataset.mediaFallbackAttempted = 'true';
+  fallback.onerror = () => {
+    fallback.style.display = 'none';
+    fallback.parentElement.innerHTML = '<span class="media-placeholder"><i class="fa-solid fa-broken-image"></i><span>Media unavailable</span></span>';
+  };
+
+  if (fallback.tagName === 'VIDEO') {
+    fallback.controls = true;
+    fallback.preload = 'metadata';
+  } else {
+    fallback.alt = 'Challenge media';
+    fallback.loading = 'lazy';
+  }
+  element.replaceWith(fallback);
 }
 
 let pendingDeleteChallengeId = null;

@@ -184,6 +184,27 @@ def answer_callback_query(callback_query_id: str, text: str = ""):
     response.raise_for_status()
 
 
+def edit_admin_report_message(chat_id: str, message_id: int, original_text: str, result: str, is_photo: bool = False):
+    """Replace report buttons with a durable moderation result."""
+    token = TELEGRAM_ADMIN_BOT_TOKEN or (TELEGRAM_BOT_TOKENS[0] if TELEGRAM_BOT_TOKENS else "")
+    if not token or not chat_id or not message_id:
+        return
+    method = "editMessageCaption" if is_photo else "editMessageText"
+    content_field = "caption" if is_photo else "text"
+    response = requests.post(
+        f"{TELEGRAM_API_URL}/bot{token}/{method}",
+        json={
+            "chat_id": chat_id,
+            "message_id": message_id,
+            content_field: f"{original_text}\n\n<b>Moderation result:</b> {result}",
+            "parse_mode": "HTML",
+            "reply_markup": {"inline_keyboard": []},
+        },
+        timeout=10,
+    )
+    response.raise_for_status()
+
+
 def _handle_admin_command(update: dict, db_factory):
     from models import User, Challenge, ChallengeReport, UserBan
 
@@ -197,7 +218,7 @@ def _handle_admin_command(update: dict, db_factory):
         callback_chat_id = str(callback_query.get("message", {}).get("chat", {}).get("id", ""))
         if TELEGRAM_ADMIN_CHAT_ID and callback_chat_id == str(TELEGRAM_ADMIN_CHAT_ID):
             try:
-                result = _handle_admin_callback(data, db_factory)
+                result = _handle_admin_callback(data, db_factory, callback_query.get("message") or {})
                 answer_callback_query(callback_query.get("id", ""), result or "Action completed")
             except Exception as e:
                 print(f"Admin callback error: {e}")
@@ -364,7 +385,7 @@ def _resolve_command_report(db: Session, command: str, action: str):
     _resolve_report(db, report_id, action)
 
 
-def _handle_admin_callback(data: str, db_factory):
+def _handle_admin_callback(data: str, db_factory, callback_message: dict):
     """Handle inline keyboard button clicks."""
     parts = data.split("_", 1)
     action = parts[0].strip().lower()
@@ -375,13 +396,24 @@ def _handle_admin_callback(data: str, db_factory):
 
     db = db_factory()
     try:
-        message = _resolve_report(db, report_id, action)
+        message = _resolve_report(db, report_id, action, notify=False)
     finally:
         db.close()
+    try:
+        original_text = callback_message.get("text") or callback_message.get("caption") or "CipherPoint moderation report"
+        edit_admin_report_message(
+            str(callback_message.get("chat", {}).get("id", "")),
+            int(callback_message.get("message_id") or 0),
+            original_text,
+            message or "Action completed",
+            bool(callback_message.get("caption")),
+        )
+    except Exception as error:
+        print(f"Admin report message update failed: {error}")
     return message
 
 
-def _resolve_report(db: Session, report_id: int, action: str):
+def _resolve_report(db: Session, report_id: int, action: str, notify: bool = True):
     """Resolve a report with the given action."""
     from models import ChallengeReport, Challenge, Comment, UserBan
 
@@ -434,7 +466,8 @@ def _resolve_report(db: Session, report_id: int, action: str):
         _cache_clear_prefix("challenges:")
     except ImportError:
         pass
-    send_telegram_message(TELEGRAM_ADMIN_CHAT_ID, message)
+    if notify:
+        send_telegram_message(TELEGRAM_ADMIN_CHAT_ID, message)
     return message
 
 

@@ -501,15 +501,24 @@ function bindGlobalEvents() {
     signupForm.addEventListener('submit', handleSignup);
   }
 
-  document.querySelectorAll('.password-toggle').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const input = btn.closest('.password-field')?.querySelector('input');
-      if (!input) return;
-      const isPassword = input.type === 'password';
-      input.type = isPassword ? 'text' : 'password';
-      const icon = btn.querySelector('i');
-      if (icon) icon.className = isPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
-    });
+  // Use event delegation for password toggles - works for both initial DOM
+  // and any modals that were already in the page on load
+  document.addEventListener('click', (event) => {
+    const btn = event.target.closest('.password-toggle');
+    if (!btn) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const wrapper = btn.closest('.password-field');
+    const input = wrapper?.querySelector('input');
+    if (!input) return;
+    const isPassword = input.type === 'password';
+    input.type = isPassword ? 'text' : 'password';
+    const icon = btn.querySelector('i');
+    if (icon) {
+      icon.className = isPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
+    }
+    // Keep focus on the input so the user can keep typing
+    setTimeout(() => input.focus(), 0);
   });
 
   const signupPassword = safeGetById('signupPassword');
@@ -2148,10 +2157,15 @@ function renderMedia(fileId) {
   }
   const mediaUrl = `/api/media/${encodeURIComponent(fileId)}`;
   const isVideo = fileId.startsWith('BAAC') || fileId.startsWith('BAAD') || fileId.startsWith('BAABAg');
+  const safeId = encodeURIComponent(fileId);
+  const downloadHref = `/api/media/${safeId}?download=1`;
+  const downloadBtn = `<a class="media-download-btn" href="${downloadHref}" download title="Download to inspect metadata locally"><i class="fa-solid fa-download"></i><span>Download</span></a>`;
+  const wrapperOpen = `<div class="media-wrapper">`;
+  const wrapperClose = `</div>`;
   if (isVideo) {
-    return `<video src="${mediaUrl}" controls preload="metadata" onerror="handleMediaError(this)"></video>`;
+    return `${wrapperOpen}<video src="${mediaUrl}" controls preload="metadata" onerror="handleMediaError(this)"></video>${downloadBtn}${wrapperClose}`;
   }
-  return `<img src="${mediaUrl}" alt="Challenge media" loading="lazy" onerror="handleMediaError(this)"/>`;
+  return `${wrapperOpen}<img src="${mediaUrl}" alt="Challenge media" loading="lazy" onerror="handleMediaError(this)"/>${downloadBtn}${wrapperClose}`;
 }
 
 function handleMediaError(element) {
@@ -3694,22 +3708,8 @@ function setupForgotPassword() {
     });
   }
 
-  // Wire password toggle (eye icon) inside the reset modal
-  const resetModal = safeGetById('resetPasswordModal');
-  if (resetModal) {
-    const toggle = resetModal.querySelector('.password-toggle');
-    const passwordInput = safeGetById('newPasswordReset');
-    if (toggle && passwordInput) {
-      toggle.addEventListener('click', () => {
-        const isHidden = passwordInput.type === 'password';
-        passwordInput.type = isHidden ? 'text' : 'password';
-        const icon = toggle.querySelector('i');
-        if (icon) {
-          icon.className = isHidden ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
-        }
-      });
-    }
-  }
+  // Password toggle (eye icon) is handled by global event delegation
+  // in bindGlobalEvents() — no per-modal wiring needed here.
 }
 
 function initNetworkAnimation() {

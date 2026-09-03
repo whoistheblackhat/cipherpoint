@@ -1912,15 +1912,45 @@ def bots_health(user_id: int = Depends(verify_token)):
 # ==================== MEDIA PROXY ROUTES ====================
 
 @app.get("/api/media/{file_id}")
-def get_media(file_id: str):
-    """Proxy endpoint for Telegram media"""
+def get_media(file_id: str, download: int = 0, request: Request = None):
+    """Proxy endpoint for Telegram media.
+
+    When `?download=1` is set, force a Content-Disposition: attachment
+    response with a sensible filename so users can save files locally
+    to inspect metadata (EXIF, video codec info, etc).
+    """
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", file_id):
         raise HTTPException(status_code=400, detail="Invalid media identifier")
     try:
-        return get_telegram_file(file_id)
+        response = get_telegram_file(file_id)
     except Exception as e:
         print(f"[MEDIA] Failed to fetch {file_id[:24]}...: {e}")
         raise HTTPException(status_code=404, detail="Media unavailable")
+
+    if download:
+        # Guess extension from content-type
+        ct = response.headers.get("content-type", "").lower()
+        if ct.startswith("video/"):
+            ext = ".mp4"
+        elif ct.startswith("image/jpeg") or ct.startswith("image/jpg"):
+            ext = ".jpg"
+        elif ct.startswith("image/png"):
+            ext = ".png"
+        elif ct.startswith("image/webp"):
+            ext = ".webp"
+        elif ct.startswith("image/gif"):
+            ext = ".gif"
+        else:
+            ext = ""
+        filename = f"cipherpoint-media-{file_id[:12]}{ext}"
+        # Build a new response so we can override the disposition
+        from fastapi.responses import Response
+        body = response.body if hasattr(response, "body") else b""
+        new_headers = dict(response.headers)
+        new_headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+        new_headers["Cache-Control"] = "private, max-age=300"
+        return Response(content=body, headers=new_headers, media_type=ct or "application/octet-stream", status_code=response.status_code)
+    return response
 
 # ==================== HEALTH CHECK ====================
 

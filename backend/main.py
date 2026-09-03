@@ -616,7 +616,17 @@ def login(payload: UserLoginRequest, request: Request, db: Session = Depends(get
         if not verify_turnstile_token(payload.turnstile_token, remote_ip):
             raise HTTPException(status_code=403, detail="Turnstile verification failed. Please complete the security check.")
 
-    user = db.query(User).filter(User.username == payload.username.strip()).first()
+    identifier = (payload.username or "").strip()
+    if not identifier:
+        raise HTTPException(status_code=400, detail="Username or email is required")
+
+    normalized_identifier = identifier.lower()
+    user = db.query(User).filter(
+        (User.username == identifier) |
+        (User.email == normalized_identifier)
+    ).first()
+    if not user:
+        user = db.query(User).filter(User.email == normalized_identifier).first()
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     ensure_user_not_banned(user.id, db)

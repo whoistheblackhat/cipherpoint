@@ -1061,7 +1061,7 @@ function renderCommunityChallenges() {
             <span class="vote-arrow"><i class="fa-solid fa-arrow-down"></i></span>
           </button>
           <a class="action-pill" href="comments.html?id=${challenge.id}">
-            <i class="fa-solid fa-comment"></i> <span class="comment-count" data-challenge-id="${challenge.id}">...</span> Comments
+            <i class="fa-solid fa-comment"></i> <span class="comment-count" data-challenge-id="${challenge.id}">${Number(challenge.comments_count || 0)}</span> Comments
           </a>
           <a class="action-pill" href="challenge_detail.html?id=${challenge.id}">
             <i class="fa-solid fa-flag"></i> Solve
@@ -1071,7 +1071,6 @@ function renderCommunityChallenges() {
     </article>
   `).join('');
 
-  loadCommentCounts(sortedChallenges.map(c => c.id));
 }
 
 async function loadCommunityChallenges() {
@@ -2338,7 +2337,7 @@ function renderChallenges() {
             <span class="vote-arrow"><i class="fa-solid fa-arrow-down"></i></span>
           </button>
           <a class="action-pill" href="comments.html?id=${challenge.id}">
-            <i class="fa-solid fa-comment"></i> <span class="comment-count" data-challenge-id="${challenge.id}">...</span> Comments
+            <i class="fa-solid fa-comment"></i> <span class="comment-count" data-challenge-id="${challenge.id}">${Number(challenge.comments_count || 0)}</span> Comments
           </a>
           <a class="action-pill" href="challenge_detail.html?id=${challenge.id}">
             <i class="fa-solid fa-flag"></i> Solve
@@ -2348,7 +2347,6 @@ function renderChallenges() {
     </article>
   `).join('');
 
-  loadCommentCounts(visible.map(c => c.id));
 }
 
 async function loadChallengeDetailPage(challengeId) {
@@ -2428,14 +2426,8 @@ async function loadChallengeDetailPage(challengeId) {
     const token = localStorage.getItem('token');
     if (token) {
       try {
-        const commentResp = await fetch(`${API_BASE_URL}/challenges/${challenge.id}/comments`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (commentResp.ok) {
-          const comments = await commentResp.json();
-          const countEl = safeGetById('detailCommentCount');
-          if (countEl) countEl.textContent = comments.length;
-        }
+        const countEl = safeGetById('detailCommentCount');
+        if (countEl) countEl.textContent = Number(challenge.comments_count || 0);
       } catch (e) {
         console.error('Error loading comment count:', e);
       }
@@ -2452,31 +2444,6 @@ async function loadChallengeDetailPage(challengeId) {
       errorEl.textContent = '❌ Unable to load challenge details';
     }
     if (content) content.style.display = 'none';
-  }
-}
-
-async function loadCommentCounts(challengeIds) {
-  if (!Array.isArray(challengeIds) || !challengeIds.length) return;
-
-  try {
-    const results = await Promise.allSettled(
-      challengeIds.map(async (id) => {
-        const response = await fetch(`${API_BASE_URL}/challenges/${id}/comments`);
-        if (!response.ok) return { id, count: 0 };
-        const comments = await response.json();
-        return { id, count: comments.length };
-      })
-    );
-
-    results.forEach((result) => {
-      if (result.status === 'fulfilled') {
-        const { id, count } = result.value;
-        const el = document.querySelector(`.comment-count[data-challenge-id="${id}"]`);
-        if (el) el.textContent = count;
-      }
-    });
-  } catch (error) {
-    console.error('Error loading comment counts:', error);
   }
 }
 
@@ -3373,8 +3340,8 @@ async function loadProfile() {
       } else {
         profileHistory.innerHTML = solved.map((item) => `
           <div class="history-item">
-            <span class="history-title">${item.title || `Case #${item.id}`}</span>
-            <span class="history-meta">${item.difficulty || 'Unranked'}</span>
+            <span class="history-title">${escapeHtml(item.title || `Case #${item.id}`)}</span>
+            <span class="history-meta">${escapeHtml(item.difficulty || 'Unranked')}${item.solved_at ? ` · ${new Date(item.solved_at).toLocaleDateString()}` : ''}</span>
           </div>
         `).join('');
       }
@@ -3388,8 +3355,8 @@ async function loadProfile() {
         profileCreated.innerHTML = created.map((item) => `
           <div class="history-item">
             <div style="flex:1;min-width:0;">
-              <span class="history-title">${item.title || `Case #${item.id}`}</span>
-              <span class="history-meta">${item.category || 'Uncategorized'} · ${item.difficulty || 'Unranked'} · ${item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Unknown date'}</span>
+              <span class="history-title">${escapeHtml(item.title || `Case #${item.id}`)}</span>
+              <span class="history-meta">${escapeHtml(item.category || 'Uncategorized')} · ${escapeHtml(item.difficulty || 'Unranked')} · ${item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Unknown date'}</span>
             </div>
             <div class="history-actions">
               <button class="btn-edit" type="button" onclick="event.stopPropagation(); openEditModal(${item.id});">Edit</button>

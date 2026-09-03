@@ -25,7 +25,7 @@ import requests
 from dotenv import load_dotenv
 from typing import Optional
 from html import escape as escape_html
-from sqlalchemy import text
+from sqlalchemy import text, func
 
 from database import init_db, get_db, SessionLocal
 from models import User, Challenge, SolvedChallenge, UnlockedHint, ChallengeReport, UserBan, Comment
@@ -80,7 +80,7 @@ allowed_origins = [frontend_url] if frontend_url else ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=True,
+    allow_credentials=bool(frontend_url),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -224,10 +224,20 @@ def ensure_admin_user():
                 db.commit()
             return
 
+        admin_password = os.getenv("ADMIN_PASSWORD", "").strip()
+        if not admin_password:
+            message = "ADMIN_PASSWORD must be configured before creating the initial admin account"
+            if IS_PRODUCTION:
+                raise RuntimeError(message)
+            print(f"[WARN] {message}; skipping default admin creation")
+            return
+        if len(admin_password) < 12:
+            raise RuntimeError("ADMIN_PASSWORD must be at least 12 characters")
+
         db.add(User(
             username="admin",
             email="admin@cipherpoint.com",
-            password_hash=hash_password("admin123"),
+            password_hash=hash_password(admin_password),
             is_admin=True,
             coins=1000,
             rank_points=5000,
@@ -748,12 +758,22 @@ def get_profile(user_id: int = Depends(verify_token), db: Session = Depends(get_
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     ensure_user_not_banned(user_id, db)
-    solved = db.query(SolvedChallenge).filter(SolvedChallenge.user_id == user_id).all()
-    solved_titles = []
-    for entry in solved:
-        challenge = db.query(Challenge).filter(Challenge.id == entry.challenge_id).first()
-        if challenge:
-            solved_titles.append({"id": challenge.id, "title": challenge.title, "difficulty": challenge.difficulty})
+    solved = (
+        db.query(SolvedChallenge, Challenge)
+        .join(Challenge, Challenge.id == SolvedChallenge.challenge_id)
+        .filter(SolvedChallenge.user_id == user_id)
+        .order_by(SolvedChallenge.solved_at.desc())
+        .all()
+    )
+    solved_titles = [
+        {
+            "id": challenge.id,
+            "title": challenge.title,
+            "difficulty": challenge.difficulty,
+            "solved_at": solved_entry.solved_at,
+        }
+        for solved_entry, challenge in solved
+    ]
 
     created_challenges = db.query(Challenge).filter(Challenge.created_by == user_id, Challenge.status.notin_(["rejected", "removed"])).all()
     created_titles = []
@@ -769,8 +789,9 @@ def get_profile(user_id: int = Depends(verify_token), db: Session = Depends(get_
         "email_hidden": bool(user.hide_email),
         "coins": user.coins,
         "rank_points": user.rank_points,
-        "solved_count": len(solved),
-         "solved_challenges": solved_titles,
+        "solved_count": len(solved_titles),
+        "solved_challenges": solved_titles,
+        "history": solved_titles,
         "created_challenges": created_titles,
         "created_at": user.created_at,
         "bio": user.bio,
@@ -1090,12 +1111,24 @@ def confirm_password_reset(payload: PasswordResetConfirm, db: Session = Depends(
 # ==================== CHALLENGES ROUTES ====================
 
 @app.get("/api/challenges")
-def get_all_challenges(db: Session = Depends(get_db)):
+def get_all_challenges(limit: Optional[int] = None, db: Session = Depends(get_db)):
     """Get all approved challenges with metadata (cached 60s)"""
-    cached = _cache_get("challenges:all")
+    normalized_limit = min(max(limit, 1), 100) if limit is not None else None
+    cache_key = f"challenges:{normalized_limit or 'all'}"
+    cached = _cache_get(cache_key)
     if cached is not None:
         return cached
-    challenges = db.query(Challenge).filter(Challenge.status.notin_(["rejected", "removed"])).all()
+    challenge_query = db.query(Challenge).filter(Challenge.status.notin_(["rejected", "removed"]))
+    if normalized_limit is not None:
+        challenge_query = challenge_query.limit(normalized_limit)
+    challenges = challenge_query.all()
+    challenge_ids = [challenge.id for challenge in challenges]
+    comment_counts = dict(
+        db.query(Comment.challenge_id, func.count(Comment.id))
+        .filter(Comment.challenge_id.in_(challenge_ids))
+        .group_by(Comment.challenge_id)
+        .all()
+    ) if challenge_ids else {}
 
     result = []
     for challenge in challenges:
@@ -1112,10 +1145,11 @@ def get_all_challenges(db: Session = Depends(get_db)):
             "status": challenge.status,
             "is_community": bool(challenge.is_community),
             "created_by": challenge.created_by,
+            "comments_count": comment_counts.get(challenge.id, 0),
             "created_at": challenge.created_at
         })
 
-    _cache_set("challenges:all", result, ttl=60)
+    _cache_set(cache_key, result, ttl=60)
     return result
 
 
@@ -1123,6 +1157,13 @@ def get_all_challenges(db: Session = Depends(get_db)):
 def get_community_challenges(db: Session = Depends(get_db)):
     """Get public community-run challenges."""
     challenges = db.query(Challenge).filter((Challenge.is_community == True) & (Challenge.status.notin_(["rejected", "removed"]))).all()
+    challenge_ids = [challenge.id for challenge in challenges]
+    comment_counts = dict(
+        db.query(Comment.challenge_id, func.count(Comment.id))
+        .filter(Comment.challenge_id.in_(challenge_ids))
+        .group_by(Comment.challenge_id)
+        .all()
+    ) if challenge_ids else {}
     result = []
     for challenge in challenges:
         solved_count = db.query(SolvedChallenge).filter(SolvedChallenge.challenge_id == challenge.id).count()
@@ -1137,6 +1178,7 @@ def get_community_challenges(db: Session = Depends(get_db)):
             "solved_count": solved_count,
             "status": challenge.status,
             "created_by": challenge.created_by,
+            "comments_count": comment_counts.get(challenge.id, 0),
             "tags": challenge.tags or "",
             "created_at": challenge.created_at,
         })
@@ -1151,6 +1193,7 @@ def get_challenge_details(challenge_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Challenge not found")
     
     solved_count = db.query(SolvedChallenge).filter(SolvedChallenge.challenge_id == challenge_id).count()
+    comments_count = db.query(Comment).filter(Comment.challenge_id == challenge_id).count()
     
     return {
         "id": challenge.id,
@@ -1169,6 +1212,7 @@ def get_challenge_details(challenge_id: int, db: Session = Depends(get_db)):
         "is_community": bool(challenge.is_community),
         "status": challenge.status,
         "solved_count": solved_count,
+        "comments_count": comments_count,
         "created_at": challenge.created_at
     }
 
@@ -1613,6 +1657,7 @@ def submit_flag(payload: FlagSubmitRequest, user_id: int = Depends(verify_token)
 @app.get("/api/leaderboard")
 def get_leaderboard(limit: int = 100, db: Session = Depends(get_db)):
     """Get top users by rank points (cached 30s)"""
+    limit = max(1, min(limit, 100))
     cache_key = f"leaderboard:{limit}"
     cached = _cache_get(cache_key)
     if cached is not None:
@@ -1733,10 +1778,13 @@ def bots_health(user_id: int = Depends(verify_token)):
 @app.get("/api/media/{file_id}")
 def get_media(file_id: str):
     """Proxy endpoint for Telegram media"""
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", file_id):
+        raise HTTPException(status_code=400, detail="Invalid media identifier")
     try:
         return get_telegram_file(file_id)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Media fetch failed: {str(e)}")
+        print(f"[MEDIA] Failed to fetch {file_id[:24]}...: {e}")
+        raise HTTPException(status_code=404, detail="Media unavailable")
 
 # ==================== HEALTH CHECK ====================
 
@@ -1797,7 +1845,7 @@ if os.path.isdir(FRONTEND_DIR):
             headers={"Cache-Control": "public, max-age=300, must-revalidate"},
         )
 
-    # Serve common static asset extensions — long cache (1 year)
+    # Keep deploy-sensitive assets revalidating so clients receive frontend fixes.
     @app.get("/app.js", include_in_schema=False)
     @app.get("/styles.css", include_in_schema=False)
     async def serve_static_asset(request: Request):
@@ -1810,7 +1858,7 @@ if os.path.isdir(FRONTEND_DIR):
         return FileResponse(
             file_path,
             media_type=None,
-            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+            headers={"Cache-Control": "public, max-age=300, must-revalidate"},
         )
 else:
     print(f"[WARN] Frontend directory not found at {_BUNDLED} or {_PARENT}")

@@ -2995,9 +2995,12 @@ body[data-page="signup"] > canvas#networkCanvas {
 @media (max-width: 640px) {
   .container,
   .dashboard-shell,
-  .hero,
-  .app-shell {
+  .hero {
     width: min(100% - 22px, 1200px);
+  }
+
+  .app-shell {
+    width: 100%;
   }
 
   .profile-meta,

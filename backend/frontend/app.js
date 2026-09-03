@@ -142,6 +142,18 @@ function safeSetValue(id, value) {
   }
 }
 
+function showAuthNotice(message) {
+  const banner = safeGetById('loginMessage');
+  if (banner) {
+    banner.textContent = message;
+    banner.classList.add('error');
+    banner.classList.remove('success');
+  }
+  if (message) {
+    showToast(`🚫 ${message}`, 'error');
+  }
+}
+
 function showLoadingScreen() {
   if (document.getElementById('cyberLoadingScreen')) return;
 
@@ -193,6 +205,11 @@ async function initializePage() {
     if (currentUser) {
       window.location.href = 'dashboard.html';
       return;
+    }
+    const pendingAuthError = sessionStorage.getItem('cipherpoint_auth_error');
+    if (pendingAuthError) {
+      showAuthNotice(pendingAuthError);
+      sessionStorage.removeItem('cipherpoint_auth_error');
     }
     initNetworkAnimation();
     setupForgotPassword();
@@ -699,7 +716,19 @@ async function loadUser() {
       return currentUser;
     }
 
-    throw new Error('Invalid token');
+    const errorData = await response.json().catch(() => ({}));
+    if (response.status === 403) {
+      const message = errorData.detail || 'Your account has been suspended.';
+      currentUser = null;
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      sessionStorage.setItem('cipherpoint_auth_error', message);
+      showToast(`🚫 ${message}`, 'error');
+      window.location.href = 'login.html';
+      return null;
+    }
+
+    throw new Error(errorData.detail || 'Invalid token');
   } catch (error) {
     currentUser = null;
     localStorage.removeItem('token');
@@ -745,9 +774,16 @@ async function handleLogin(event) {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
+      const errorMessage = response.status === 403
+        ? 'Your account has been suspended.'
+        : (data.detail || 'Login failed');
       if (messageBox) {
-        messageBox.textContent = data.detail || 'Login failed';
+        messageBox.textContent = errorMessage;
         messageBox.classList.add('error');
+        messageBox.classList.remove('success');
+      }
+      if (response.status === 403) {
+        showToast('🚫 Your account has been suspended.', 'error');
       }
       if (window.turnstile) {
         try { window.turnstile.reset(); } catch (e) {}
@@ -809,9 +845,15 @@ async function handleOtpRequest() {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
+      const errorMessage = response.status === 403
+        ? 'Your account has been suspended.'
+        : (data.detail || 'Unable to send OTP');
       if (requestMessageEl) {
-        requestMessageEl.textContent = data.detail || 'Unable to send OTP';
+        requestMessageEl.textContent = errorMessage;
         requestMessageEl.className = 'form-message show error';
+      }
+      if (response.status === 403) {
+        showToast('🚫 Your account has been suspended.', 'error');
       }
       if (window.turnstile) {
         try { window.turnstile.reset(); } catch (e) {}
@@ -877,11 +919,14 @@ async function handleOtpVerifySubmit(event) {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
+      const errorMessage = response.status === 403
+        ? 'Your account has been suspended.'
+        : (data.detail || 'OTP verification failed');
       if (verifyMessageEl) {
-        verifyMessageEl.textContent = data.detail || 'OTP verification failed';
+        verifyMessageEl.textContent = errorMessage;
         verifyMessageEl.className = 'form-message show error';
       }
-      showToast(`❌ ${data.detail || 'OTP verification failed'}`, 'error');
+      showToast(`❌ ${errorMessage}`, 'error');
       return;
     }
 

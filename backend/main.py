@@ -1,7 +1,14 @@
 from fastapi import FastAPI, Depends, HTTPException, Header, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+
+# Workaround: starlette 0.26 uses `anyio.to_thread` lazily.
+# anyio 4.x has lazy __getattr__ that fails on some Python builds.
+# Explicit import makes `anyio.to_thread` resolvable.
+import anyio
+import anyio.to_thread  # noqa: F401
+
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
@@ -1046,9 +1053,12 @@ def confirm_password_reset(payload: PasswordResetConfirm, db: Session = Depends(
 
 @app.get("/api/challenges")
 def get_all_challenges(db: Session = Depends(get_db)):
-    """Get all approved challenges with metadata"""
+    """Get all approved challenges with metadata (cached 60s)"""
+    cached = _cache_get("challenges:all")
+    if cached is not None:
+        return cached
     challenges = db.query(Challenge).filter(Challenge.status.notin_(["rejected", "removed"])).all()
-    
+
     result = []
     for challenge in challenges:
         solved_count = db.query(SolvedChallenge).filter(SolvedChallenge.challenge_id == challenge.id).count()
@@ -1066,7 +1076,8 @@ def get_all_challenges(db: Session = Depends(get_db)):
             "created_by": challenge.created_by,
             "created_at": challenge.created_at
         })
-    
+
+    _cache_set("challenges:all", result, ttl=60)
     return result
 
 
@@ -1167,6 +1178,7 @@ def create_challenge(
     db.commit()
     db.refresh(new_challenge)
 
+    _cache_clear_prefix("challenges:")
     return {
         "id": new_challenge.id,
         "title": new_challenge.title,
@@ -1418,6 +1430,7 @@ def delete_challenge(
 
     challenge.status = "removed"
     db.commit()
+    _cache_clear_prefix("challenges:")
     return {"message": "Challenge removed successfully.", "id": challenge_id}
 
 class ChallengeUpdateRequest(BaseModel):
@@ -1469,6 +1482,7 @@ def update_challenge(
 
     db.commit()
     db.refresh(challenge)
+    _cache_clear_prefix("challenges:")
     return {"message": "Challenge updated successfully.", "id": challenge.id}
 
 
@@ -1539,6 +1553,8 @@ def submit_flag(payload: FlagSubmitRequest, user_id: int = Depends(verify_token)
         solved_challenge = SolvedChallenge(user_id=user_id, challenge_id=challenge_id)
         db.add(solved_challenge)
         db.commit()
+        _cache_clear_prefix("challenges:")
+        _cache_clear_prefix("leaderboard:")
         return {
             "success": True,
             "message": "Correct! Challenge solved!",
@@ -1552,7 +1568,11 @@ def submit_flag(payload: FlagSubmitRequest, user_id: int = Depends(verify_token)
 
 @app.get("/api/leaderboard")
 def get_leaderboard(limit: int = 100, db: Session = Depends(get_db)):
-    """Get top users by rank points"""
+    """Get top users by rank points (cached 30s)"""
+    cache_key = f"leaderboard:{limit}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
     top_users = db.query(User).filter(User.public_profile != False).order_by(User.rank_points.desc()).limit(limit).all()
 
     result = []
@@ -1704,7 +1724,10 @@ if os.path.isdir(FRONTEND_DIR):
     # Root serves index.html (landing page)
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def serve_index():
-        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+        return FileResponse(
+            os.path.join(FRONTEND_DIR, "index.html"),
+            headers={"Cache-Control": "public, max-age=300"},  # 5 min
+        )
 
     @app.get("/login.html", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/signup.html", response_class=HTMLResponse, include_in_schema=False)
@@ -1721,14 +1744,16 @@ if os.path.isdir(FRONTEND_DIR):
         """Serve any *.html file from the frontend directory."""
         filename = request.url.path.lstrip("/")
         file_path = os.path.join(FRONTEND_DIR, filename)
-        # Security: ensure path is within FRONTEND_DIR (no path traversal)
         if not os.path.abspath(file_path).startswith(os.path.abspath(FRONTEND_DIR)):
             raise HTTPException(status_code=400, detail="Invalid path")
         if not os.path.isfile(file_path):
             raise HTTPException(status_code=404, detail="Page not found")
-        return FileResponse(file_path)
+        return FileResponse(
+            file_path,
+            headers={"Cache-Control": "public, max-age=300, must-revalidate"},
+        )
 
-    # Serve common static asset extensions
+    # Serve common static asset extensions — long cache (1 year)
     @app.get("/app.js", include_in_schema=False)
     @app.get("/styles.css", include_in_schema=False)
     async def serve_static_asset(request: Request):
@@ -1738,9 +1763,55 @@ if os.path.isdir(FRONTEND_DIR):
             raise HTTPException(status_code=400, detail="Invalid path")
         if not os.path.isfile(file_path):
             raise HTTPException(status_code=404, detail="Not found")
-        return FileResponse(file_path, media_type=None)
+        return FileResponse(
+            file_path,
+            media_type=None,
+            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
 else:
     print(f"[WARN] Frontend directory not found at {_BUNDLED} or {_PARENT}")
+
+
+# ==================== API CACHE MIDDLEWARE ====================
+
+# Simple in-memory cache for read-heavy public endpoints
+# Avoids hitting Turso on every request for data that changes rarely.
+import time as _time
+from threading import Lock as _Lock
+
+_API_CACHE: dict = {}
+_API_CACHE_LOCK = _Lock()
+_API_CACHE_TTL = int(os.getenv("API_CACHE_TTL_SECONDS", "60"))  # default 60s
+
+
+def _cache_get(key: str):
+    """Return cached value if fresh, else None."""
+    if _API_CACHE_TTL <= 0:
+        return None
+    with _API_CACHE_LOCK:
+        entry = _API_CACHE.get(key)
+        if entry is None:
+            return None
+        value, expires_at = entry
+        if _time.time() > expires_at:
+            del _API_CACHE[key]
+            return None
+        return value
+
+
+def _cache_set(key: str, value, ttl: int = None):
+    if _API_CACHE_TTL <= 0:
+        return
+    with _API_CACHE_LOCK:
+        _API_CACHE[key] = (value, _time.time() + (ttl or _API_CACHE_TTL))
+
+
+def _cache_clear_prefix(prefix: str):
+    """Invalidate cache entries whose key starts with prefix (after a write)."""
+    with _API_CACHE_LOCK:
+        keys_to_delete = [k for k in _API_CACHE if k.startswith(prefix)]
+        for k in keys_to_delete:
+            del _API_CACHE[k]
 
 if __name__ == "__main__":
     import uvicorn

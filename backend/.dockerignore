@@ -58,12 +58,14 @@ test_*.py
 htmlcov/
 .tox/
 
-# --- Frontend (not needed in backend image) ---
-../frontend/
+# --- Project root files (not needed in backend image) ---
 ../prompt.txt
 ../DEPLOYMENT.md
 ../render.yaml
 ../README.md
+../cipherpoint.db
+../requirements.txt
+../venv/
 
 # --- Docker meta ---
 Dockerfile

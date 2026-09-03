@@ -1698,9 +1698,14 @@ def liveness_probe():
 # ==================== ROOT & STATIC FILES ====================
 
 # Serve frontend static files (must be registered AFTER all API routes)
-FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend")
-if os.path.exists(FRONTEND_DIR):
+# Order: 1) bundled backend/frontend (Docker), 2) parent ../frontend (local dev)
+_BUNDLED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend")
+_PARENT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend")
+FRONTEND_DIR = _BUNDLED if os.path.isdir(_BUNDLED) else _PARENT
+if os.path.isdir(FRONTEND_DIR):
     app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+else:
+    print(f"[WARN] Frontend directory not found at {_BUNDLED} or {_PARENT}")
 
 if __name__ == "__main__":
     import uvicorn

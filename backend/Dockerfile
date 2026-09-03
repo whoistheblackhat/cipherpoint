@@ -18,12 +18,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy backend source
+# Copy backend source (includes bundled frontend/ folder)
 COPY . .
-
-# Copy frontend (Docker build context must include parent ../frontend)
-# This requires Docker build context = project root (set Root Directory = "." in Render)
-COPY frontend /app/frontend
 
 # Data directory for any local SQLite fallback (not used in Turso mode)
 RUN mkdir -p /app/data

@@ -1229,6 +1229,14 @@ button, input {
   background: rgba(255, 255, 255, 0.04);
 }
 
+.reddit-comment .vote-btn.upvoted {
+  color: var(--teal);
+}
+
+.reddit-comment .vote-btn.downvoted {
+  color: var(--danger);
+}
+
 .reddit-comment .vote-count {
   font-size: 0.8rem;
   font-weight: 700;

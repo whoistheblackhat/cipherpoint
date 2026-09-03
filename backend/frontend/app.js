@@ -16,6 +16,8 @@ const REPORT_REASONS = [
 
 let selectedReportReason = null;
 let reportChallengeId = null;
+let reportContext = 'challenge';
+let reportCommentId = null;
 
 const badgeCatalog = [
   {
@@ -1179,7 +1181,7 @@ async function handleModerationAction(reportId, action) {
   }
 }
 
-async function reportChallenge(challengeId) {
+async function reportChallenge(challengeId, context = 'challenge') {
   console.log('[REPORT] Opening report modal for challenge:', challengeId);
   const token = localStorage.getItem('token');
   if (!token) {
@@ -1188,6 +1190,8 @@ async function reportChallenge(challengeId) {
   }
 
   reportChallengeId = challengeId;
+  reportContext = context;
+  reportCommentId = null;
   selectedReportReason = null;
   const submitBtn = safeGetById('submitReportBtn');
   if (submitBtn) submitBtn.disabled = true;
@@ -1240,6 +1244,8 @@ async function submitReport() {
   }
 
   const reasonLabel = REPORT_REASONS.find(r => r.id === selectedReportReason)?.label || selectedReportReason;
+  const submitBtn = safeGetById('submitReportBtn');
+  if (submitBtn) submitBtn.disabled = true;
 
   try {
     console.log('[REPORT] Sending API request...');
@@ -1249,7 +1255,12 @@ async function submitReport() {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`
       },
-      body: JSON.stringify({ reason: reasonLabel, details: 'Community moderation review requested' })
+       body: JSON.stringify({
+         reason: reasonLabel,
+         details: reportContext === 'comment'
+           ? `Comment #${reportCommentId} reported for moderation review`
+           : 'Community moderation review requested'
+       })
     });
 
     const data = await response.json().catch(() => ({}));
@@ -1259,11 +1270,17 @@ async function submitReport() {
       throw new Error(data.detail || 'Report failed');
     }
 
-    showToast('✅ Challenge reported to moderators', 'success');
+    showToast(
+      reportContext === 'comment'
+        ? '✅ Comment reported to moderators'
+        : '✅ Challenge reported to moderators',
+      'success'
+    );
     closeReportModal();
   } catch (error) {
     console.error('[REPORT] Error:', error);
     showToast('❌ Unable to report challenge', 'error');
+    if (submitBtn) submitBtn.disabled = false;
   }
 }
 
@@ -1272,6 +1289,8 @@ function closeReportModal() {
   if (modal) modal.classList.remove('active');
   reportChallengeId = null;
   selectedReportReason = null;
+  reportContext = 'challenge';
+  reportCommentId = null;
 }
 
 let editChallengeId = null;
@@ -2803,11 +2822,11 @@ function renderRedditComment(comment, challengeId, depth) {
   return `
     <div class="reddit-comment ${isCollapsed}" data-comment-id="${comment.id}">
       <div class="vote-column">
-        <button class="vote-btn" onclick="upvoteComment(${comment.id})" title="Upvote">
+        <button class="vote-btn" type="button" onclick="voteComment(this, 1)" title="Upvote" aria-label="Upvote">
           <i class="fa-solid fa-arrow-up"></i>
         </button>
         <div class="vote-count">${voteCount}</div>
-        <button class="vote-btn" onclick="downvoteComment(${comment.id})" title="Downvote">
+        <button class="vote-btn" type="button" onclick="voteComment(this, -1)" title="Downvote" aria-label="Downvote">
           <i class="fa-solid fa-arrow-down"></i>
         </button>
       </div>
@@ -2831,11 +2850,8 @@ function renderRedditComment(comment, challengeId, depth) {
           <button class="comment-action" onclick="shareComment(${comment.id})">
             <i class="fa-solid fa-share"></i> Share
           </button>
-          <button class="comment-action" onclick="reportComment(${comment.id})">
+          <button class="comment-action" type="button" onclick="reportComment(${comment.id}, ${challengeId})">
             <i class="fa-solid fa-flag"></i> Report
-          </button>
-          <button class="comment-action" onclick="saveComment(${comment.id})">
-            <i class="fa-solid fa-bookmark"></i> Save
           </button>
         </div>
         ${repliesHtml ? `<div class="replies-thread">${repliesHtml}</div>` : ''}
@@ -2934,12 +2950,23 @@ async function replyToComment(parentId, challengeId) {
   }
 }
 
-function upvoteComment(commentId) {
-  showToast('👍 Upvoted', 'success');
-}
+function voteComment(button, direction) {
+  const comment = button?.closest('.reddit-comment');
+  const count = comment?.querySelector('.vote-count');
+  if (!comment || !count) return;
 
-function downvoteComment(commentId) {
-  showToast('👎 Downvoted', 'success');
+  const activeClass = direction > 0 ? 'upvoted' : 'downvoted';
+  const oppositeClass = direction > 0 ? 'downvoted' : 'upvoted';
+  const wasActive = button.classList.contains(activeClass);
+  const oppositeButton = comment.querySelector(`.vote-btn.${oppositeClass}`);
+  const switchedVote = !wasActive && Boolean(oppositeButton);
+  comment.querySelectorAll('.vote-btn').forEach((item) => item.classList.remove('upvoted', 'downvoted'));
+  const currentScore = Number(count.textContent) || 0;
+  const nextScore = wasActive
+    ? currentScore - direction
+    : currentScore + direction * (switchedVote ? 2 : 1);
+  button.classList.toggle(activeClass, !wasActive);
+  count.textContent = nextScore;
 }
 
 function shareComment(commentId) {
@@ -2955,12 +2982,9 @@ function shareComment(commentId) {
   }
 }
 
-function reportComment(commentId) {
-  showToast('🚩 Report submitted for moderation', 'success');
-}
-
-function saveComment(commentId) {
-  showToast('🔖 Comment saved', 'success');
+function reportComment(commentId, challengeId) {
+  reportChallenge(challengeId, 'comment');
+  reportCommentId = commentId;
 }
 
 async function unlockHint(challengeId, hintNumber) {
@@ -3420,11 +3444,15 @@ function showToast(message, type = 'success') {
   if (!toast) return;
 
   toast.textContent = message;
+  toast.setAttribute('role', 'status');
+  toast.setAttribute('aria-live', 'polite');
   toast.className = `toast show ${type}`;
 
   clearTimeout(showToast.timeoutId);
   showToast.timeoutId = setTimeout(() => {
     toast.classList.remove('show');
+    toast.textContent = '';
+    toast.className = 'toast';
   }, 3000);
 }
 

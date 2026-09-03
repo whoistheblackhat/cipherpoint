@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, Header, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -1680,20 +1681,13 @@ def health_check():
     """Health check endpoint"""
     return {"status": "✅ CipherPoint API is running!"}
 
-@app.get("/")
-def root_redirect():
-    """Root endpoint — for Render health checks and basic reachability test."""
-    return {
-        "service": "CipherPoint API",
-        "status": "ok",
-        "docs": "/docs",
-        "health": "/api/health",
-    }
-
 @app.get("/healthz")
 def liveness_probe():
     """Liveness probe (no DB query) — for k8s/Render."""
     return {"status": "alive"}
+
+# /api/ is reserved for API. The HTML frontend is served at the end of this file
+# (see ROOT & STATIC FILES section below). Do NOT register a route at "/" here.
 
 # ==================== ROOT & STATIC FILES ====================
 
@@ -1702,8 +1696,49 @@ def liveness_probe():
 _BUNDLED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend")
 _PARENT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend")
 FRONTEND_DIR = _BUNDLED if os.path.isdir(_BUNDLED) else _PARENT
+
 if os.path.isdir(FRONTEND_DIR):
-    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+    # Mount static assets (JS, CSS, images) at /static
+    app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+
+    # Root serves index.html (landing page)
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    async def serve_index():
+        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+
+    @app.get("/login.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/signup.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/dashboard.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/community.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/challenge_detail.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/comments.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/leaderboard.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/profile.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/settings.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/privacy.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/terms.html", response_class=HTMLResponse, include_in_schema=False)
+    async def serve_html_page(request: Request):
+        """Serve any *.html file from the frontend directory."""
+        filename = request.url.path.lstrip("/")
+        file_path = os.path.join(FRONTEND_DIR, filename)
+        # Security: ensure path is within FRONTEND_DIR (no path traversal)
+        if not os.path.abspath(file_path).startswith(os.path.abspath(FRONTEND_DIR)):
+            raise HTTPException(status_code=400, detail="Invalid path")
+        if not os.path.isfile(file_path):
+            raise HTTPException(status_code=404, detail="Page not found")
+        return FileResponse(file_path)
+
+    # Serve common static asset extensions
+    @app.get("/app.js", include_in_schema=False)
+    @app.get("/styles.css", include_in_schema=False)
+    async def serve_static_asset(request: Request):
+        filename = request.url.path.lstrip("/")
+        file_path = os.path.join(FRONTEND_DIR, filename)
+        if not os.path.abspath(file_path).startswith(os.path.abspath(FRONTEND_DIR)):
+            raise HTTPException(status_code=400, detail="Invalid path")
+        if not os.path.isfile(file_path):
+            raise HTTPException(status_code=404, detail="Not found")
+        return FileResponse(file_path, media_type=None)
 else:
     print(f"[WARN] Frontend directory not found at {_BUNDLED} or {_PARENT}")
 

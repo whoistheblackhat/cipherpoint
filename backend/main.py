@@ -245,11 +245,15 @@ def reserve_community_quota(user: User, db: Session):
 def ensure_admin_user():
     db = SessionLocal()
     try:
-        existing = db.query(User).filter(User.username == "admin").first()
+        admin_username = os.getenv("ADMIN_USERNAME", "admin").strip() or "admin"
+        admin_email = os.getenv("ADMIN_EMAIL", "admin@cipherpoint.com").strip() or "admin@cipherpoint.com"
+        existing = db.query(User).filter(User.username == admin_username).first()
         if existing:
             if not existing.is_admin:
                 existing.is_admin = True
-                db.commit()
+            if admin_email and existing.email != admin_email:
+                existing.email = admin_email
+            db.commit()
             return
 
         admin_password = os.getenv("ADMIN_PASSWORD", "").strip()
@@ -263,8 +267,8 @@ def ensure_admin_user():
             raise RuntimeError("ADMIN_PASSWORD must be at least 12 characters")
 
         db.add(User(
-            username="admin",
-            email="admin@cipherpoint.com",
+            username=admin_username,
+            email=admin_email,
             password_hash=hash_password(admin_password),
             is_admin=True,
             coins=1000,
@@ -1560,7 +1564,17 @@ def resolve_moderation_report(
             raise HTTPException(status_code=404, detail="Report target user not found")
         existing_ban = db.query(UserBan).filter(UserBan.user_id == target_user_id).first()
         if not existing_ban:
-            db.add(UserBan(user_id=target_user_id, reason=payload.reason or "Challenge report violation", banned_by=admin_user.id))
+            ban_reason = payload.reason or report.reason or "Challenge report violation"
+            db.add(UserBan(user_id=target_user_id, reason=ban_reason, banned_by=admin_user.id))
+            target_user = db.query(User).filter(User.id == target_user_id).first()
+            if target_user and target_user.telegram_chat_id:
+                send_user_notification(
+                    str(target_user.telegram_chat_id),
+                    "🚫 <b>Account suspended</b>\n\n"
+                    f"Your CipherPoint account has been suspended by {admin_user.username}.\n\n"
+                    f"<b>Reason:</b> {escape_html(ban_reason)}\n\n"
+                    "You can no longer access the platform until this suspension is reviewed."
+                )
 
     report.status = "resolved"
     report.resolved_at = datetime.utcnow()

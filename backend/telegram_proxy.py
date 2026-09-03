@@ -144,6 +144,24 @@ def send_user_notification(chat_id: str, text: str):
         return None
 
 
+def notify_banned_user(user, reason: str, admin_name: Optional[str] = None):
+    """Send a direct Telegram ban message to a linked user with the official reason."""
+    if not user:
+        return None
+    chat_id = getattr(user, "telegram_chat_id", None)
+    if not chat_id:
+        return None
+    reason_text = (reason or "Platform policy violation").strip() or "Platform policy violation"
+    moderator_suffix = f" by {admin_name}" if admin_name else ""
+    message = (
+        "🚫 <b>Account suspended</b>\n\n"
+        f"Your CipherPoint account has been suspended{moderator_suffix}.\n\n"
+        f"<b>Reason:</b> {escape_html(reason_text)}\n\n"
+        "You can no longer access the platform until this suspension is reviewed."
+    )
+    return send_user_notification(str(chat_id), message)
+
+
 def send_telegram_photo_with_buttons(chat_id: str, photo_file_id: str, caption: str, buttons: list):
     """Send a photo with inline keyboard buttons via the admin bot."""
     token = TELEGRAM_ADMIN_BOT_TOKEN or (TELEGRAM_BOT_TOKENS[0] if TELEGRAM_BOT_TOKENS else "")
@@ -459,7 +477,11 @@ def _resolve_report(db: Session, report_id: int, action: str, notify: bool = Tru
         if not existing_ban:
             if not target_user_id:
                 return "❌ Report target user not found."
-            db.add(UserBan(user_id=target_user_id, reason="Report violation", banned_by=admin.id))
+            ban_reason = f"Report violation: {report.reason}"
+            db.add(UserBan(user_id=target_user_id, reason=ban_reason, banned_by=admin.id))
+            target_user = db.query(User).filter(User.id == target_user_id).first()
+            if target_user:
+                notify_banned_user(target_user, ban_reason, getattr(admin, "username", None))
         report.status = "resolved"
         report.resolved_at = datetime.utcnow()
         report.resolved_by = admin.id

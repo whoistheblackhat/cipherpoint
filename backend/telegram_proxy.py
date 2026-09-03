@@ -32,10 +32,14 @@ _BOT_LOCKS = defaultdict(threading.Lock)
 _BOT_FAILURE_COUNT = defaultdict(int)
 _BOT_CIRCUIT_OPEN_UNTIL = {}
 
-# Global upload semaphore to prevent thread explosion
-UPLOAD_SEMAPHORE = threading.Semaphore(int(os.getenv("MAX_CONCURRENT_UPLOADS", "20")))
+# Global upload semaphore to prevent thread explosion.
+# On Render free plan uvicorn has 1 worker, but with run_in_executor offload
+# we can still have multiple Telegram uploads in flight concurrently. Keep
+# the semaphore comfortably above the executor pool size so backpressure is
+# driven by real capacity, not by an arbitrary low limit.
+UPLOAD_SEMAPHORE = threading.Semaphore(int(os.getenv("MAX_CONCURRENT_UPLOADS", "30")))
 UPLOAD_EXECUTOR = ThreadPoolExecutor(
-    max_workers=int(os.getenv("MAX_UPLOAD_WORKERS", "8")),
+    max_workers=int(os.getenv("MAX_UPLOAD_WORKERS", "12")),
     thread_name_prefix="tgupload"
 )
 

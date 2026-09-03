@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 # Explicit import makes `anyio.to_thread` resolvable.
 import anyio
 import anyio.to_thread  # noqa: F401
+import asyncio
 
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -199,8 +200,8 @@ def validate_community_submission(payload: CommunityChallengeCreateRequest):
         raise HTTPException(status_code=400, detail="Personal identity or private data is not allowed on this platform.")
 
 
-COMMUNITY_CTF_WEEKLY_LIMIT = int(os.getenv("COMMUNITY_CTF_WEEKLY_LIMIT", "2"))
-COMMUNITY_CTF_EXPIRY_DAYS = int(os.getenv("COMMUNITY_CTF_EXPIRY_DAYS", "7"))
+COMMUNITY_CTF_WEEKLY_LIMIT = int(os.getenv("COMMUNITY_CTF_WEEKLY_LIMIT", "0"))
+COMMUNITY_CTF_EXPIRY_DAYS = int(os.getenv("COMMUNITY_CTF_EXPIRY_DAYS", "30"))
 
 
 def check_and_reset_weekly_quota(user: User):
@@ -213,7 +214,13 @@ def check_and_reset_weekly_quota(user: User):
 
 
 def enforce_community_quota(user: User):
-    """Raise 429 if user has hit the weekly community CTF creation limit."""
+    """Raise 429 if user has hit the weekly community CTF creation limit.
+
+    When COMMUNITY_CTF_WEEKLY_LIMIT is 0 the quota is disabled entirely so
+    that testing and seeding flows are not blocked.
+    """
+    if COMMUNITY_CTF_WEEKLY_LIMIT <= 0:
+        return
     check_and_reset_weekly_quota(user)
     if (user.weekly_challenges_used or 0) >= COMMUNITY_CTF_WEEKLY_LIMIT:
         retry_after = max(0, int((user.weekly_reset_at - datetime.utcnow()).total_seconds()))
@@ -225,7 +232,13 @@ def enforce_community_quota(user: User):
 
 
 def reserve_community_quota(user: User, db: Session):
-    """Atomically reserve one community challenge slot for this user."""
+    """Atomically reserve one community challenge slot for this user.
+
+    When COMMUNITY_CTF_WEEKLY_LIMIT is 0 quota is disabled, so the
+    counter is left untouched.
+    """
+    if COMMUNITY_CTF_WEEKLY_LIMIT <= 0:
+        return
     check_and_reset_weekly_quota(user)
     db.flush()
     updated = db.query(User).filter(
@@ -1424,11 +1437,18 @@ def create_community_challenge(
     db.flush()
 
     if not getattr(user, "weekly_reset_at", None):
-        user.weekly_reset_at = datetime.utcnow() + timedelta(days=7)
+        # Only seed a reset window when the weekly quota is active. If the
+        # limit is 0 (unlimited) we still set a far-future marker so the
+        # /auth/me response has a sane value, but it should never be
+        # consulted by the quota logic.
+        user.weekly_reset_at = datetime.utcnow() + timedelta(days=7 if COMMUNITY_CTF_WEEKLY_LIMIT > 0 else 365)
     db.commit()
     db.refresh(new_challenge)
 
-    remaining = max(0, COMMUNITY_CTF_WEEKLY_LIMIT - user.weekly_challenges_used)
+    if COMMUNITY_CTF_WEEKLY_LIMIT <= 0:
+        remaining = None  # unlimited
+    else:
+        remaining = max(0, COMMUNITY_CTF_WEEKLY_LIMIT - (user.weekly_challenges_used or 0))
 
     return {
         "id": new_challenge.id,
@@ -1437,7 +1457,7 @@ def create_community_challenge(
         "is_community": True,
         "status": new_challenge.status,
         "quota": {
-            "used": user.weekly_challenges_used,
+            "used": user.weekly_challenges_used or 0,
             "limit": COMMUNITY_CTF_WEEKLY_LIMIT,
             "remaining": remaining,
             "resets_at": user.weekly_reset_at.isoformat() if user.weekly_reset_at else None
@@ -1874,7 +1894,7 @@ async def upload_media(
     db: Session = Depends(get_db)
 ):
     """Upload image/video to Telegram channel via bot pool with backpressure."""
-    from telegram_proxy import UPLOAD_SEMAPHORE
+    from telegram_proxy import UPLOAD_SEMAPHORE, UPLOAD_EXECUTOR
 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -1882,7 +1902,11 @@ async def upload_media(
 
     ensure_user_not_banned(user_id, db)
 
-    if not UPLOAD_SEMAPHORE.acquire(blocking=False):
+    # Block (up to 10s) instead of failing fast, so a brief burst doesn't
+    # surface as 503 to the user. If the queue is genuinely saturated for
+    # 10s straight, then we return 503 with a retry-after hint.
+    acquired = UPLOAD_SEMAPHORE.acquire(blocking=True, timeout=10)
+    if not acquired:
         raise HTTPException(
             status_code=503,
             detail="Upload queue is busy. Please try again in a few seconds."
@@ -1911,7 +1935,16 @@ async def upload_media(
         if file.content_type.startswith("video"):
             validate_media_duration(tmp_path, file.content_type)
 
-        upload_result = upload_media_to_channel(tmp_path, file.content_type)
+        # Offload the blocking Telegram upload to the thread pool so the
+        # event loop stays responsive for other requests while the slow
+        # network call to api.telegram.org is in flight.
+        loop = asyncio.get_event_loop()
+        upload_result = await loop.run_in_executor(
+            UPLOAD_EXECUTOR,
+            upload_media_to_channel,
+            tmp_path,
+            file.content_type,
+        )
 
         return {
             "success": True,

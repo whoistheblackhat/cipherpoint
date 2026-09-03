@@ -419,7 +419,7 @@ def _handle_admin_callback(data: str, db_factory, callback_message: dict):
 
 def _resolve_report(db: Session, report_id: int, action: str, notify: bool = True):
     """Resolve a report with the given action."""
-    from models import ChallengeReport, Challenge, Comment, UserBan
+    from models import ChallengeReport, Challenge, Comment, User, UserBan
 
     if action not in {"approve", "reject", "ban"}:
         return "❌ Invalid moderation action."
@@ -448,7 +448,8 @@ def _resolve_report(db: Session, report_id: int, action: str, notify: bool = Tru
         report.resolved_at = datetime.utcnow()
         report.resolved_by = admin.id
         db.commit()
-        message = f"🗑️ Report #{report_id} rejected. Challenge hidden."
+        target = "comment" if report.comment_id else "challenge"
+        message = f"🗑️ Report #{report_id} rejected. {target.capitalize()} hidden."
 
     elif action == "ban":
         if challenge and report.comment_id is None:

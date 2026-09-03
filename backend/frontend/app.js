@@ -7,7 +7,7 @@ let communitySortMode = 'newest';
 let challengeCommentsState = {};
 let appConfig = {
   turnstile_enabled: false,
-  site_key: ''
+  site_key: '0x4AAAAAAEluDz4B8bvFcmsF'
 };
 
 const REPORT_REASONS = [
@@ -155,18 +155,18 @@ async function loadAppConfig() {
     const config = await response.json();
     appConfig = {
       turnstile_enabled: Boolean(config.turnstile_enabled),
-      site_key: String(config.site_key || '')
+      site_key: String(config.site_key || '0x4AAAAAAEluDz4B8bvFcmsF')
     };
   } catch (error) {
     appConfig = {
-      turnstile_enabled: false,
-      site_key: ''
+      turnstile_enabled: true,
+      site_key: '0x4AAAAAAEluDz4B8bvFcmsF'
     };
   }
 }
 
 function renderTurnstileWidgets() {
-  const widgets = document.querySelectorAll('.cf-turnstile');
+  const widgets = document.querySelectorAll('.turnstile-widget');
   if (!widgets.length) return;
 
   if (!appConfig.turnstile_enabled || !appConfig.site_key) {
@@ -190,13 +190,14 @@ function renderTurnstileWidgets() {
 
   widgets.forEach((widget) => {
     const callbackName = widget.dataset.callback || '';
+    const callback = window[callbackName];
     widget.dataset.sitekey = appConfig.site_key;
     widget.style.display = 'block';
     if (widget.dataset.rendered === 'true') return;
 
     window.turnstile.render(widget, {
       sitekey: appConfig.site_key,
-      callback: callbackName,
+      callback: typeof callback === 'function' ? callback : undefined,
       theme: widget.dataset.theme || 'dark'
     });
     widget.dataset.rendered = 'true';
@@ -842,17 +843,17 @@ async function handleLogin(event) {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      const errorMessage = response.status === 403
-        ? 'Your account has been suspended.'
-        : (data.detail || 'Login failed');
+      const errorMessage = data.detail || (
+        response.status === 403
+          ? 'Security verification failed. Please complete the Cloudflare check.'
+          : 'Login failed'
+      );
       if (messageBox) {
         messageBox.textContent = errorMessage;
         messageBox.classList.add('error');
         messageBox.classList.remove('success');
       }
-      if (response.status === 403) {
-        showToast('🚫 Your account has been suspended.', 'error');
-      }
+      showToast(`🚫 ${errorMessage}`, 'error');
       if (window.turnstile) {
         try { window.turnstile.reset(); } catch (e) {}
       }

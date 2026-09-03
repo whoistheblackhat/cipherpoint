@@ -458,27 +458,29 @@ button, input {
 .challenge-feed {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   width: 100%;
 }
 
 .challenge-card {
-  background: transparent;
-  border: none;
-  border-radius: 0;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--line);
+  border-radius: 8px;
   padding: 0;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease;
   overflow: visible;
   width: 100%;
+  backdrop-filter: none;
 }
 
 .challenge-card:hover {
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.045);
+  border-color: rgba(91, 179, 255, 0.28);
 }
 
 .challenge-card .card-inner {
-  padding: 16px 0;
+  padding: 14px 16px;
 }
 
 .challenge-header {
@@ -1876,11 +1878,11 @@ input:focus {
 .community-feed {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .community-card {
-  border-left: 2px solid rgba(109, 224, 208, 0.5);
+  border-color: rgba(109, 224, 208, 0.35);
 }
 
 .auth-card {
@@ -3543,7 +3545,7 @@ body[data-page="signup"] > canvas#networkCanvas {
     width: 100%;
   }
   .challenge-card {
-    padding: 16px;
+    padding: 0;
   }
   .challenge-header {
     flex-direction: column;

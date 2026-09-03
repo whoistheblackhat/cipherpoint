@@ -108,6 +108,8 @@ class ChallengeReport(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     challenge_id = Column(Integer, ForeignKey("challenges.id"), nullable=False)
+    comment_id = Column(Integer, ForeignKey("comments.id"), nullable=True)
+    target_type = Column(String, default="challenge", nullable=False)
     reporter_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     reason = Column(String, nullable=False)
     details = Column(Text, default="")

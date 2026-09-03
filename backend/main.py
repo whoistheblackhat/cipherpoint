@@ -150,6 +150,7 @@ class CommunityChallengeCreateRequest(BaseModel):
 class ChallengeReportRequest(BaseModel):
     reason: str
     details: str = ""
+    comment_id: Optional[int] = None
 
 class ModerationActionRequest(BaseModel):
     action: str
@@ -1397,12 +1398,28 @@ def report_challenge(
         if challenge.status in {"rejected", "removed"}:
             raise HTTPException(status_code=404, detail="Challenge not found")
 
-        existing = db.query(ChallengeReport).filter(
-            (ChallengeReport.challenge_id == challenge_id) &
-            (ChallengeReport.reporter_id == reporter_id)
-        ).first()
+        comment = None
+        if payload.comment_id is not None:
+            comment = db.query(Comment).filter(
+                Comment.id == payload.comment_id,
+                Comment.challenge_id == challenge_id,
+            ).first()
+            if not comment:
+                raise HTTPException(status_code=404, detail="Comment not found")
+
+        existing_query = db.query(ChallengeReport).filter(
+            ChallengeReport.challenge_id == challenge_id,
+            ChallengeReport.reporter_id == reporter_id,
+        )
+        existing_query = existing_query.filter(
+            ChallengeReport.comment_id == payload.comment_id
+            if payload.comment_id is not None
+            else ChallengeReport.comment_id.is_(None)
+        )
+        existing = existing_query.first()
         if existing:
-            return {"message": "You already reported this challenge.", "status": "already_reported"}
+            target = "comment" if comment else "challenge"
+            return {"message": f"You already reported this {target}.", "status": "already_reported"}
 
         reason = payload.reason.strip()[:200]
         details = payload.details.strip()[:400]
@@ -1411,6 +1428,8 @@ def report_challenge(
 
         report = ChallengeReport(
             challenge_id=challenge_id,
+            comment_id=comment.id if comment else None,
+            target_type="comment" if comment else "challenge",
             reporter_id=reporter_id,
             reason=reason,
             details=details,
@@ -1427,11 +1446,17 @@ def report_challenge(
         print(f"[REPORT] Admin chat configured: {bool(TELEGRAM_ADMIN_CHAT_ID)}")
         print(f"[REPORT] Admin bot configured: {bool(TELEGRAM_ADMIN_BOT_TOKEN)}")
 
+        telegram_notified = False
         if TELEGRAM_ADMIN_CHAT_ID:
             try:
+                comment_line = (
+                    f"Comment: #{comment.id} - {escape_html(comment.body[:300])}\n"
+                    if comment else ""
+                )
                 caption = (
-                    f"🚨 <b>New Challenge Report</b>\n\n"
+                    f"🚨 <b>New {'Comment' if comment else 'Challenge'} Report</b>\n\n"
                     f"Challenge: #{challenge_id} - {escape_html(challenge.title)}\n"
+                    f"{comment_line}"
                     f"Category: {escape_html(challenge.category)} | Difficulty: {escape_html(challenge.difficulty)}\n"
                     f"Reported by: {escape_html(reporter_name)}\n"
                     f"Reason: {escape_html(reason)}\n"
@@ -1448,7 +1473,6 @@ def report_challenge(
                         {"text": "🚫 Ban User", "callback": f"ban_{report.id}"}
                     ]
                 ]
-
                 if challenge.telegram_file_id:
                     try:
                         send_telegram_photo_with_buttons(
@@ -1464,12 +1488,18 @@ def report_challenge(
                     send_telegram_message(TELEGRAM_ADMIN_CHAT_ID, caption + "\n\nUse /approve " + str(report.id) + " /reject " + str(report.id) + " /ban " + str(report.id))
 
                 print(f"[REPORT] Telegram notification sent successfully")
+                telegram_notified = True
             except Exception as e:
                 print(f"[REPORT] Telegram notification failed: {e}")
         else:
             print("⚠️ Report received but TELEGRAM_ADMIN_CHAT_ID not configured. Set it in .env to receive notifications.")
 
-        return {"message": "Challenge reported successfully.", "status": "open", "report_id": report.id}
+        return {
+            "message": "Report submitted successfully.",
+            "status": "open",
+            "report_id": report.id,
+            "telegram_notified": telegram_notified,
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -1485,14 +1515,18 @@ def list_moderation_reports(admin_user: User = Depends(get_current_admin_user), 
     payload = []
     for report in reports:
         challenge = db.query(Challenge).filter(Challenge.id == report.challenge_id).first()
+        comment = db.query(Comment).filter(Comment.id == report.comment_id).first() if report.comment_id else None
         reporter = db.query(User).filter(User.id == report.reporter_id).first()
         payload.append({
             "id": report.id,
             "challenge_id": report.challenge_id,
+            "comment_id": report.comment_id,
+            "target_type": report.target_type or "challenge",
             "challenge_title": challenge.title if challenge else "Unknown challenge",
             "reporter": reporter.username if reporter else "unknown",
             "reason": report.reason,
             "details": report.details,
+            "comment_body": comment.body if comment else None,
             "created_at": report.created_at,
         })
     return payload
@@ -1515,14 +1549,18 @@ def resolve_moderation_report(
         raise HTTPException(status_code=400, detail="Action must be approve, reject, or ban")
 
     challenge = db.query(Challenge).filter(Challenge.id == report.challenge_id).first()
-    if action == "reject" and challenge:
+    comment = db.query(Comment).filter(Comment.id == report.comment_id).first() if report.comment_id else None
+    if action == "reject" and challenge and report.comment_id is None:
         challenge.status = "removed"
     elif action == "ban":
-        if challenge:
+        if challenge and report.comment_id is None:
             challenge.status = "removed"
-        existing_ban = db.query(UserBan).filter(UserBan.user_id == report.reporter_id).first()
+        target_user_id = comment.user_id if comment else (challenge.created_by if challenge else None)
+        if not target_user_id:
+            raise HTTPException(status_code=404, detail="Report target user not found")
+        existing_ban = db.query(UserBan).filter(UserBan.user_id == target_user_id).first()
         if not existing_ban:
-            db.add(UserBan(user_id=report.reporter_id, reason=payload.reason or "Challenge report violation", banned_by=admin_user.id))
+            db.add(UserBan(user_id=target_user_id, reason=payload.reason or "Challenge report violation", banned_by=admin_user.id))
 
     report.status = "resolved"
     report.resolved_at = datetime.utcnow()

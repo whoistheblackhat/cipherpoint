@@ -121,6 +121,16 @@ def init_db():
         if comment_columns and not any(column[1] == "parent_id" for column in comment_columns):
             conn.execute(text("ALTER TABLE comments ADD COLUMN parent_id INTEGER REFERENCES comments(id)"))
 
+        report_columns = conn.execute(text("PRAGMA table_info(challenge_reports)")).fetchall()
+        if report_columns and not any(column[1] == "comment_id" for column in report_columns):
+            conn.execute(text("ALTER TABLE challenge_reports ADD COLUMN comment_id INTEGER REFERENCES comments(id)"))
+        if report_columns and not any(column[1] == "target_type" for column in report_columns):
+            conn.execute(text("ALTER TABLE challenge_reports ADD COLUMN target_type VARCHAR DEFAULT 'challenge' NOT NULL"))
+
+        conn.execute(text(
+            "DELETE FROM unlocked_hints WHERE rowid NOT IN ("
+            "SELECT MIN(rowid) FROM unlocked_hints GROUP BY user_id, challenge_id, hint_number)"
+        ))
         conn.execute(text(
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_unlocked_hints_user_challenge_number "
             "ON unlocked_hints (user_id, challenge_id, hint_number)"

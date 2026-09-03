@@ -1259,7 +1259,8 @@ async function submitReport() {
          reason: reasonLabel,
          details: reportContext === 'comment'
            ? `Comment #${reportCommentId} reported for moderation review`
-           : 'Community moderation review requested'
+           : 'Community moderation review requested',
+         comment_id: reportContext === 'comment' ? reportCommentId : null
        })
     });
 

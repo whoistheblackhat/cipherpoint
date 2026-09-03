@@ -383,7 +383,7 @@ def _handle_admin_callback(data: str, db_factory):
 
 def _resolve_report(db: Session, report_id: int, action: str):
     """Resolve a report with the given action."""
-    from models import ChallengeReport, Challenge, UserBan
+    from models import ChallengeReport, Challenge, Comment, UserBan
 
     if action not in {"approve", "reject", "ban"}:
         return "❌ Invalid moderation action."
@@ -393,6 +393,7 @@ def _resolve_report(db: Session, report_id: int, action: str):
         return "❌ Report not found."
 
     challenge = db.query(Challenge).filter(Challenge.id == report.challenge_id).first()
+    comment = db.query(Comment).filter(Comment.id == report.comment_id).first() if report.comment_id else None
     admin = db.query(User).filter(User.is_admin == True).order_by(User.id.asc()).first()
     if not admin:
         return "❌ No admin account available to record this action."
@@ -405,7 +406,7 @@ def _resolve_report(db: Session, report_id: int, action: str):
         message = f"✅ Report #{report_id} approved."
 
     elif action == "reject":
-        if challenge:
+        if challenge and report.comment_id is None:
             challenge.status = "removed"
         report.status = "resolved"
         report.resolved_at = datetime.utcnow()
@@ -414,11 +415,14 @@ def _resolve_report(db: Session, report_id: int, action: str):
         message = f"🗑️ Report #{report_id} rejected. Challenge hidden."
 
     elif action == "ban":
-        if challenge:
+        if challenge and report.comment_id is None:
             challenge.status = "removed"
-        existing_ban = db.query(UserBan).filter(UserBan.user_id == report.reporter_id).first()
+        target_user_id = comment.user_id if comment else (challenge.created_by if challenge else None)
+        existing_ban = db.query(UserBan).filter(UserBan.user_id == target_user_id).first() if target_user_id else None
         if not existing_ban:
-            db.add(UserBan(user_id=report.reporter_id, reason="Report violation", banned_by=admin.id))
+            if not target_user_id:
+                return "❌ Report target user not found."
+            db.add(UserBan(user_id=target_user_id, reason="Report violation", banned_by=admin.id))
         report.status = "resolved"
         report.resolved_at = datetime.utcnow()
         report.resolved_by = admin.id

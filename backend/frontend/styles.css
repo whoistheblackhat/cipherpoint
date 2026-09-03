@@ -3571,6 +3571,22 @@ body[data-page="signup"] > canvas#networkCanvas {
   .profile-grid {
     grid-template-columns: 1fr;
   }
+  .profile-hero {
+    flex-direction: column;
+  }
+  .profile-avatar-col {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+  }
+  .profile-meta-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .meta-chip {
+    min-width: 0;
+  }
   .badge-showcase {
     grid-template-columns: 1fr;
   }

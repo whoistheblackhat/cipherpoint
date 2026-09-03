@@ -10,34 +10,27 @@ from turso_client import is_turso_configured, connect_turso
 
 
 def _make_engine():
-    """Build engine - uses Turso HTTP API if configured, else DATABASE_URL."""
-    if is_turso_configured():
-        from sqlalchemy.pool import StaticPool
-        url = "sqlite:///:memory:"
-        creator = lambda: connect_turso(os.getenv("TURSO_URL"), os.getenv("TURSO_AUTH_TOKEN"))
-        return create_engine(
-            url,
-            creator=creator,
-            poolclass=StaticPool,
-            connect_args={"check_same_thread": False},
-            echo=False
-        )
+    """Build the SQLAlchemy engine against the configured Turso database."""
+    if not is_turso_configured():
+        raise RuntimeError("TURSO_URL and TURSO_AUTH_TOKEN must be configured")
 
-    _raw_url = os.getenv("DATABASE_URL", "sqlite:///./cipherpoint.db")
-    if _raw_url.startswith("postgres://"):
-        _raw_url = _raw_url.replace("postgres://", "postgresql://", 1)
-
+    from sqlalchemy.pool import StaticPool
+    creator = lambda: connect_turso(
+        os.getenv("TURSO_URL", "").strip(),
+        os.getenv("TURSO_AUTH_TOKEN", "").strip(),
+    )
     return create_engine(
-        _raw_url,
-        connect_args={"check_same_thread": False} if _raw_url.startswith("sqlite") else {},
-        pool_pre_ping=True,
+        "sqlite:///:memory:",
+        creator=creator,
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False},
         echo=False
     )
 
 
 engine = _make_engine()
-IS_TURSO = is_turso_configured()
-IS_POSTGRES = not IS_TURSO and engine.url.get_backend_name().startswith("postgres")
+IS_TURSO = True
+IS_POSTGRES = False
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

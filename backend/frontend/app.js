@@ -5,6 +5,10 @@ let filteredChallenges = [];
 let communityChallenges = [];
 let communitySortMode = 'newest';
 let challengeCommentsState = {};
+let appConfig = {
+  turnstile_enabled: false,
+  site_key: ''
+};
 
 const REPORT_REASONS = [
   { id: 'spam', label: 'Spam or misleading', description: 'Duplicate, spam, or irrelevant content' },
@@ -142,6 +146,63 @@ function safeSetValue(id, value) {
   }
 }
 
+async function loadAppConfig() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/config`);
+    if (!response.ok) {
+      throw new Error('Failed to load app config');
+    }
+    const config = await response.json();
+    appConfig = {
+      turnstile_enabled: Boolean(config.turnstile_enabled),
+      site_key: String(config.site_key || '')
+    };
+  } catch (error) {
+    appConfig = {
+      turnstile_enabled: false,
+      site_key: ''
+    };
+  }
+}
+
+function renderTurnstileWidgets() {
+  const widgets = document.querySelectorAll('.cf-turnstile');
+  if (!widgets.length) return;
+
+  if (!appConfig.turnstile_enabled || !appConfig.site_key) {
+    widgets.forEach((widget) => {
+      widget.style.display = 'none';
+      const hiddenTokenInput = widget.nextElementSibling;
+      if (hiddenTokenInput && hiddenTokenInput.tagName === 'INPUT') {
+        hiddenTokenInput.value = '';
+      }
+    });
+    return;
+  }
+
+  if (!window.turnstile) {
+    window.setTimeout(renderTurnstileWidgets, 500);
+    widgets.forEach((widget) => {
+      widget.style.display = 'none';
+    });
+    return;
+  }
+
+  widgets.forEach((widget) => {
+    const callbackName = widget.dataset.callback || '';
+    widget.dataset.sitekey = appConfig.site_key;
+    widget.style.display = 'block';
+    if (widget.dataset.rendered === 'true') return;
+
+    window.turnstile.render(widget, {
+      sitekey: appConfig.site_key,
+      callback: callbackName,
+      theme: widget.dataset.theme || 'dark'
+    });
+    widget.dataset.rendered = 'true';
+  });
+}
+
 function showAuthNotice(message) {
   const banner = safeGetById('loginMessage');
   if (banner) {
@@ -186,8 +247,14 @@ function hideLoadingScreen() {
   }, remaining);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   showLoadingScreen();
+  try {
+    await loadAppConfig();
+    renderTurnstileWidgets();
+  } catch (error) {
+    console.warn('Failed to init app config', error);
+  }
   initializePage().finally(hideLoadingScreen);
 });
 
@@ -213,6 +280,7 @@ async function initializePage() {
     }
     initNetworkAnimation();
     setupForgotPassword();
+    renderTurnstileWidgets();
     return;
   }
 

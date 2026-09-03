@@ -52,6 +52,13 @@ TURNSTILE_SECRET_KEY = os.getenv("CLOUDFLARE_SECRET_KEY", "").strip()
 TURNSTILE_ENABLED = os.getenv("TURNSTILE_ENABLED", "false").lower() == "true"
 
 
+def get_turnstile_config():
+    return {
+        "turnstile_enabled": bool(TURNSTILE_ENABLED and TURNSTILE_SECRET_KEY),
+        "site_key": TURNSTILE_SITE_KEY,
+    }
+
+
 def verify_turnstile_token(token: str | None, remote_ip: str | None = None) -> bool:
     if not TURNSTILE_SECRET_KEY or not TURNSTILE_ENABLED:
         return True
@@ -1921,6 +1928,13 @@ def get_media(file_id: str):
 def health_check():
     """Health check endpoint"""
     return {"status": "✅ CipherPoint API is running!"}
+
+
+@app.get("/api/config")
+def public_config():
+    """Expose public client config without leaking secrets."""
+    return get_turnstile_config()
+
 
 @app.get("/healthz")
 def liveness_probe():

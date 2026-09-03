@@ -3591,9 +3591,10 @@ function setupForgotPassword() {
     });
   }
 
-  const sendResetTokenBtn = safeGetById('sendResetTokenBtn');
-  if (sendResetTokenBtn) {
-    sendResetTokenBtn.addEventListener('click', async () => {
+  const forgotForm = safeGetById('forgotPasswordForm');
+  if (forgotForm) {
+    forgotForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
       const username = safeGetById('forgotPasswordUsername')?.value?.trim();
       const messageEl = safeGetById('forgotPasswordMessage');
       if (!username) {
@@ -3636,15 +3637,23 @@ function setupForgotPassword() {
     });
   }
 
-  const confirmResetBtn = safeGetById('confirmResetBtn');
-  if (confirmResetBtn) {
-    confirmResetBtn.addEventListener('click', async () => {
+  const resetForm = safeGetById('resetPasswordForm');
+  if (resetForm) {
+    resetForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
       const token = safeGetById('resetTokenInput')?.value?.trim();
       const newPassword = safeGetById('newPasswordReset')?.value;
       const messageEl = safeGetById('resetPasswordMessage');
       if (!token || !newPassword) {
         if (messageEl) {
           messageEl.textContent = 'Please provide both token and new password';
+          messageEl.className = 'form-message show error';
+        }
+        return;
+      }
+      if (newPassword.length < 6) {
+        if (messageEl) {
+          messageEl.textContent = 'Password must be at least 6 characters';
           messageEl.className = 'form-message show error';
         }
         return;
@@ -3664,6 +3673,11 @@ function setupForgotPassword() {
           setTimeout(() => {
             const modal = safeGetById('resetPasswordModal');
             if (modal) modal.classList.remove('active');
+            const loginForm = safeGetById('loginForm');
+            if (loginForm) {
+              const usernameInput = safeGetById('loginUsername');
+              if (usernameInput) usernameInput.focus();
+            }
           }, 2000);
         } else {
           if (messageEl) {
@@ -3678,6 +3692,23 @@ function setupForgotPassword() {
         }
       }
     });
+  }
+
+  // Wire password toggle (eye icon) inside the reset modal
+  const resetModal = safeGetById('resetPasswordModal');
+  if (resetModal) {
+    const toggle = resetModal.querySelector('.password-toggle');
+    const passwordInput = safeGetById('newPasswordReset');
+    if (toggle && passwordInput) {
+      toggle.addEventListener('click', () => {
+        const isHidden = passwordInput.type === 'password';
+        passwordInput.type = isHidden ? 'text' : 'password';
+        const icon = toggle.querySelector('i');
+        if (icon) {
+          icon.className = isHidden ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
+        }
+      });
+    }
   }
 }
 

@@ -22,6 +22,7 @@ import shutil
 import threading
 import time
 import requests
+import hmac
 from dotenv import load_dotenv
 from typing import Optional
 from html import escape as escape_html
@@ -947,6 +948,41 @@ def change_password(payload: PasswordChangeRequest, user_id: int = Depends(verif
         )
 
     return {"message": "Password updated successfully"}
+
+
+class EmergencyResetRequest(BaseModel):
+    username: str
+    new_password: str
+    master_key: str
+
+
+@app.post("/api/admin/emergency-reset-password")
+def emergency_reset_password(payload: EmergencyResetRequest, db: Session = Depends(get_db)):
+    """Emergency password reset using a master key from env.
+
+    Set ADMIN_MASTER_KEY in Render env to enable. This is a recovery hatch
+    for when the admin account is locked out. The master key is never
+    returned and is checked in constant time.
+    """
+    expected = os.getenv("ADMIN_MASTER_KEY")
+    if not expected:
+        raise HTTPException(status_code=503, detail="Emergency reset is not configured on this server")
+    if not hmac.compare_digest(payload.master_key, expected):
+        # Generic message to avoid leaking whether the key is set
+        raise HTTPException(status_code=403, detail="Invalid master key")
+    if len(payload.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    user = db.query(User).filter(User.username == payload.username.strip()).first()
+    if not user:
+        user = db.query(User).filter(User.email == payload.username.strip().lower()).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.password_hash = hash_password(payload.new_password)
+    db.commit()
+    return {"message": f"Password reset for {user.username}", "username": user.username}
+
 
 class NotificationSettingsRequest(BaseModel):
     notify_new_challenges: bool | None = None

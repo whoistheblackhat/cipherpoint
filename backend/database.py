@@ -56,8 +56,8 @@ def get_db():
 # Create all tables
 def init_db():
     Base.metadata.create_all(bind=engine)
-    if IS_POSTGRES or IS_TURSO:
-        return  # Schema handled by create_all; migrations require Alembic for prod
+    if IS_POSTGRES:
+        return  # PostgreSQL migrations require Alembic in production
     with engine.begin() as conn:
         user_columns = conn.execute(text("PRAGMA table_info(users)")).fetchall()
         if not any(column[1] == "is_admin" for column in user_columns):

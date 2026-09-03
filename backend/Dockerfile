@@ -22,7 +22,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Copy frontend (Docker build context must include parent ../frontend)
-# This requires Docker build context = project root
+# This requires Docker build context = project root (set Root Directory = "." in Render)
 COPY frontend /app/frontend
 
 # Data directory for any local SQLite fallback (not used in Turso mode)

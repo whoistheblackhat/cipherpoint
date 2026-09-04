@@ -180,6 +180,7 @@ async def add_security_headers(request: Request, call_next):
         "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
         "img-src 'self' data: https://cdnjs.cloudflare.com; "
         "connect-src 'self' https://api.telegram.org https://challenges.cloudflare.com; "
+        "frame-src 'self' https://challenges.cloudflare.com; "
         "frame-ancestors 'none'; "
         "base-uri 'self'; "
         "form-action 'self'"

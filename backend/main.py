@@ -1699,7 +1699,10 @@ def update_telegram_settings(payload: TelegramSettingsRequest, user_id: int = De
             raise HTTPException(status_code=400, detail="Connect Telegram first before enabling notifications")
         user.telegram_notifications = payload.enabled
     if payload.chat_id is not None:
-        user.telegram_chat_id = payload.chat_id
+        raw_chat_id = (payload.chat_id or "").strip()
+        if not raw_chat_id or not raw_chat_id.lstrip("-").isdigit():
+            raise HTTPException(status_code=400, detail="Invalid Telegram chat ID format")
+        user.telegram_chat_id = raw_chat_id
 
     db.commit()
     db.refresh(user)
@@ -2120,10 +2123,19 @@ def create_community_challenge(
 def report_challenge(
     challenge_id: int,
     payload: ChallengeReportRequest,
+    request: Request,
     reporter_id: int = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
     """Allow users to flag a challenge for moderation review."""
+    ip = request.client.host if request.client else "unknown"
+    allowed, retry = rate_limit_check(f"report_user:{reporter_id}", max_events=5, window_seconds=3600)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many reports. Please wait {retry}s.",
+            headers={"Retry-After": str(retry)},
+        )
     try:
         ensure_user_not_banned(reporter_id, db)
         challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
@@ -2534,7 +2546,9 @@ def submit_flag(
     if already_solved:
         return {"success": False, "message": "You already solved this challenge!"}
 
-    if flag.lower() == (challenge.correct_flag or "").strip().lower():
+    submitted = (payload.flag or "").strip()
+    expected = (challenge.correct_flag or "").strip()
+    if submitted and expected and constant_time_eq(submitted.lower(), expected.lower()):
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
@@ -2542,7 +2556,12 @@ def submit_flag(
         user.rank_points = (user.rank_points or 0) + (challenge.points_reward or 0)
         solved_challenge = SolvedChallenge(user_id=user_id, challenge_id=challenge_id)
         db.add(solved_challenge)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            return {"success": False, "message": "You already solved this challenge!"}
+        db.refresh(user)
         _cache_clear_prefix("challenges:")
         _cache_clear_prefix("leaderboard:")
         return {

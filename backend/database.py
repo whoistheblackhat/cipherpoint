@@ -139,3 +139,8 @@ def init_db():
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_unlocked_hints_user_challenge_number "
             "ON unlocked_hints (user_id, challenge_id, hint_number)"
         ))
+
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_solved_challenge_user_challenge "
+            "ON solved_challenges (user_id, challenge_id)"
+        ))

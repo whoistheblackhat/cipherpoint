@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, Header, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 # Workaround: starlette 0.26 uses `anyio.to_thread` lazily.
@@ -2889,17 +2889,19 @@ if os.path.isdir(FRONTEND_DIR):
     @app.get("/admin.js", include_in_schema=False)
     @app.get("/styles.css", include_in_schema=False)
     async def serve_static_asset(request: Request):
-        filename = request.url.path.lstrip("/")
-        file_path = os.path.join(FRONTEND_DIR, filename)
-        if not os.path.abspath(file_path).startswith(os.path.abspath(FRONTEND_DIR)):
-            raise HTTPException(status_code=400, detail="Invalid path")
+        rel = request.url.path.lstrip("/")
+        file_path = os.path.join(FRONTEND_DIR, rel)
         if not os.path.isfile(file_path):
             raise HTTPException(status_code=404, detail="Not found")
         return FileResponse(
             file_path,
-            media_type=None,
             headers={"Cache-Control": "public, max-age=300, must-revalidate"},
         )
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def serve_favicon():
+        return RedirectResponse("/static/favicon.svg", status_code=308)
+
 else:
     print(f"[WARN] Frontend directory not found at {_BUNDLED} or {_PARENT}")
 

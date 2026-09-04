@@ -2900,7 +2900,10 @@ if os.path.isdir(FRONTEND_DIR):
 
     @app.get("/favicon.ico", include_in_schema=False)
     async def serve_favicon():
-        return RedirectResponse("/static/favicon.svg", status_code=308)
+        return FileResponse(
+            os.path.join(FRONTEND_DIR, "favicon.ico"),
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
 
 else:
     print(f"[WARN] Frontend directory not found at {_BUNDLED} or {_PARENT}")

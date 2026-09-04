@@ -676,7 +676,7 @@ function bindGlobalEvents() {
 function injectConditionalSidebarLinks() {
   // Idempotent — only inject once per page.
   if (document.body.dataset.sidebarEnhanced === '1') return;
-  const nav = document.querySelector('aside .sidebar-nav, nav.sidebar-nav, .sidebar nav');
+  const nav = document.querySelector('aside.sidebar-nav, aside.sidebar, .sidebar-nav, nav.sidebar-links');
   if (!nav) return;
   document.body.dataset.sidebarEnhanced = '1';
 

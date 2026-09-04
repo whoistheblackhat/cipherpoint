@@ -31,7 +31,24 @@
   }
 
   async function init() {
-    const u = user();
+    // Always verify admin status with the server — localStorage can be stale
+    // (older tokens don't carry the is_admin field).
+    if (!token()) {
+      $('adminGate').style.display = 'block';
+      $('adminApp').style.display = 'none';
+      return;
+    }
+
+    let u = user();
+    if (!u || typeof u.is_admin !== 'boolean') {
+      // Refresh from /api/auth/me so we have the authoritative is_admin flag.
+      const res = await authedFetch('/auth/me');
+      if (res.ok) {
+        u = Object.assign({}, u || {}, res.data);
+        try { localStorage.setItem('user', JSON.stringify(u)); } catch {}
+      }
+    }
+
     if (!u || !u.is_admin) {
       $('adminGate').style.display = 'block';
       $('adminApp').style.display = 'none';

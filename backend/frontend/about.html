@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About CipherPoint</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .about-page {
+            max-width: 880px;
+            margin: 0 auto;
+            padding: 60px 24px 80px;
+        }
+        .about-hero {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        .about-hero h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #58a6ff 0%, #3fb950 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.8rem;
+        }
+        .about-hero p {
+            color: #8b949e;
+            font-size: 1.1rem;
+        }
+        .about-section {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 16px;
+            padding: 2rem 2.2rem;
+            margin-bottom: 1.5rem;
+        }
+        .about-section h2 {
+            color: #e6edf3;
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .about-section h2 i {
+            color: #58a6ff;
+        }
+        .about-section p {
+            color: #c9d1d9;
+            line-height: 1.7;
+            margin-bottom: 0.8rem;
+        }
+        .about-section ul {
+            color: #c9d1d9;
+            line-height: 1.8;
+            padding-left: 1.5rem;
+        }
+        .about-section ul li {
+            margin-bottom: 0.4rem;
+        }
+        .contact-card {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        .contact-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 18px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 10px;
+            text-decoration: none;
+            color: #c9d1d9;
+            transition: border-color 0.15s, transform 0.15s, background 0.15s;
+        }
+        .contact-row:hover {
+            border-color: #58a6ff;
+            background: rgba(88, 166, 255, 0.05);
+            transform: translateY(-1px);
+        }
+        .contact-row i {
+            font-size: 1.4rem;
+            width: 24px;
+            text-align: center;
+        }
+        .contact-row .label {
+            color: #8b949e;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .contact-row .handle {
+            color: #e6edf3;
+            font-size: 1rem;
+            font-weight: 500;
+        }
+        .contact-row .platform-icon {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            background: rgba(88, 166, 255, 0.1);
+            color: #58a6ff;
+        }
+        .contact-row[data-platform="instagram"] .platform-icon { background: rgba(225, 48, 108, 0.1); color: #e1306c; }
+        .contact-row[data-platform="youtube"] .platform-icon { background: rgba(255, 0, 0, 0.1); color: #ff0000; }
+        .contact-row[data-platform="email"] .platform-icon { background: rgba(63, 185, 80, 0.1); color: #3fb950; }
+        .contact-row .copy-btn {
+            margin-left: auto;
+            background: transparent;
+            border: 1px solid #30363d;
+            color: #8b949e;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .contact-row .copy-btn:hover {
+            border-color: #58a6ff;
+            color: #58a6ff;
+        }
+        .contact-row .text {
+            flex: 1;
+        }
+        .principle-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 14px;
+            margin-top: 1rem;
+        }
+        .principle {
+            padding: 16px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 10px;
+        }
+        .principle .ico {
+            font-size: 1.6rem;
+            color: #58a6ff;
+            margin-bottom: 0.6rem;
+        }
+        .principle h3 {
+            color: #e6edf3;
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.3rem;
+        }
+        .principle p {
+            color: #8b949e;
+            font-size: 0.85rem;
+            line-height: 1.5;
+        }
+        .topbar {
+            padding: 1rem 0;
+        }
+        .topbar a {
+            color: #c9d1d9;
+            text-decoration: none;
+            margin-left: 1.2rem;
+            font-size: 0.9rem;
+        }
+        .topbar a:hover { color: #58a6ff; }
+    </style>
+</head>
+<body data-page="about">
+    <canvas id="networkCanvas" width="1920" height="1080" style="position:fixed;inset:0;width:100vw;height:100vh;z-index:0;pointer-events:none;display:block;"></canvas>
+
+    <header class="site-header">
+        <nav class="topbar container">
+            <div class="brand-wrap">
+                <a href="index.html" style="text-decoration:none;color:inherit;display:flex;align-items:center;gap:10px;">
+                    <div class="brand-mark-icon"><i class="fa-solid fa-user-secret"></i></div>
+                    <div class="brand-text">CipherPoint</div>
+                </a>
+            </div>
+            <div>
+                <a href="index.html">Home</a>
+                <a href="login.html">Sign In</a>
+                <a href="signup.html">Sign Up</a>
+            </div>
+        </nav>
+    </header>
+
+    <main class="about-page">
+        <div class="about-hero">
+            <h1>About CipherPoint</h1>
+            <p>A community-driven OSINT &amp; digital forensics training ground for analysts, investigators, and curious minds.</p>
+        </div>
+
+        <section class="about-section">
+            <h2><i class="fa-solid fa-bullseye"></i> Mission</h2>
+            <p>CipherPoint exists to make open-source intelligence and digital forensics <strong>accessible, ethical, and addictive to learn</strong>. Every challenge you see on the platform is crafted to teach a real-world investigative skill — reading EXIF metadata, geolocating imagery, reverse-searching personas, parsing video frame data, and tracing digital breadcrumbs.</p>
+            <p>We're a dojo, not a puzzle box. Walkthroughs are written by the same people who write the cases, so the "why" is as important as the "how".</p>
+        </section>
+
+        <section class="about-section">
+            <h2><i class="fa-solid fa-shield-halved"></i> What we stand for</h2>
+            <div class="principle-grid">
+                <div class="principle">
+                    <div class="ico"><i class="fa-solid fa-user-shield"></i></div>
+                    <h3>No Doxxing</h3>
+                    <p>Personal data of real individuals is a hard line. Every published challenge goes through a disclaimer check.</p>
+                </div>
+                <div class="principle">
+                    <div class="ico"><i class="fa-solid fa-scale-balanced"></i></div>
+                    <h3>Ethical OSINT</h3>
+                    <p>Only public sources, only public records. We teach the methods investigators use, not the tools stalkers use.</p>
+                </div>
+                <div class="principle">
+                    <div class="ico"><i class="fa-solid fa-graduation-cap"></i></div>
+                    <h3>Real Skills</h3>
+                    <p>Every case is a slice of a real investigation. Solve enough and you can read the digital world like a book.</p>
+                </div>
+                <div class="principle">
+                    <div class="ico"><i class="fa-solid fa-people-group"></i></div>
+                    <h3>Community First</h3>
+                    <p>Users publish challenges, write walkthroughs, and shape the platform. CipherPoint is built by the people who use it.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="about-section">
+            <h2><i class="fa-solid fa-trophy"></i> What's here</h2>
+            <ul>
+                <li><strong>Curated case files</strong> across GEOINT, video forensics, metadata analysis, reverse image search, and persona tracing.</li>
+                <li><strong>Community CTFs</strong> — publish your own case, set the reward, and watch the community solve it.</li>
+                <li><strong>Hint economy</strong> — coins for solving, coins for hint purchases. Daily login bonus keeps the loop alive.</li>
+                <li><strong>Solution walkthroughs</strong> — once you crack a case, the full reasoning is unlocked (no cheap Googling).</li>
+                <li><strong>Leaderboard</strong> — compete on the global ranking by points, or by your "Solver" / "Investigator" badges.</li>
+            </ul>
+        </section>
+
+        <section class="about-section">
+            <h2><i class="fa-solid fa-satellite-dish"></i> Get in touch</h2>
+            <p style="margin-bottom: 1.4rem;">Found a bug? Want to propose a case? Report abuse? Reach out on any of the channels below.</p>
+
+            <div class="contact-card">
+                <a class="contact-row" data-platform="instagram" href="https://instagram.com/who_is_the_black_hat" target="_blank" rel="noopener noreferrer">
+                    <div class="platform-icon"><i class="fa-brands fa-instagram"></i></div>
+                    <div class="text">
+                        <div class="label">Instagram</div>
+                        <div class="handle">@who_is_the_black_hat</div>
+                    </div>
+                    <button class="copy-btn" type="button" onclick="event.preventDefault(); copyToClipboard('@who_is_the_black_hat', this);"><i class="fa-solid fa-copy"></i> Copy</button>
+                </a>
+
+                <a class="contact-row" data-platform="youtube" href="https://youtube.com/@sentinel_octopus" target="_blank" rel="noopener noreferrer">
+                    <div class="platform-icon"><i class="fa-brands fa-youtube"></i></div>
+                    <div class="text">
+                        <div class="label">YouTube</div>
+                        <div class="handle">@sentinel_octopus</div>
+                    </div>
+                    <button class="copy-btn" type="button" onclick="event.preventDefault(); copyToClipboard('@sentinel_octopus', this);"><i class="fa-solid fa-copy"></i> Copy</button>
+                </a>
+
+                <a class="contact-row" data-platform="email" href="mailto:whoistheblackhat@gmail.com">
+                    <div class="platform-icon"><i class="fa-solid fa-envelope"></i></div>
+                    <div class="text">
+                        <div class="label">Email</div>
+                        <div class="handle">whoistheblackhat@gmail.com</div>
+                    </div>
+                    <button class="copy-btn" type="button" onclick="event.preventDefault(); copyToClipboard('whoistheblackhat@gmail.com', this);"><i class="fa-solid fa-copy"></i> Copy</button>
+                </a>
+            </div>
+        </section>
+
+        <section class="about-section" style="text-align:center;">
+            <p style="color:#8b949e;">CipherPoint is independently built and operated. Server costs are covered out-of-pocket for now — donations and a Telegram Stars option are coming soon.</p>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <div class="container footer-inner">
+            <div>© 2026 CipherPoint</div>
+            <div class="footer-links">
+                <a href="terms.html">Terms of Service</a>
+                <a href="privacy.html">Privacy Policy</a>
+            </div>
+            <div>Secure OSINT lab infrastructure</div>
+        </div>
+    </footer>
+
+    <script>
+        function copyToClipboard(text, btn) {
+            navigator.clipboard.writeText(text).then(() => {
+                const original = btn.innerHTML;
+                btn.innerHTML = '<i class="fa-solid fa-check"></i> Copied';
+                btn.style.color = '#3fb950';
+                btn.style.borderColor = '#3fb950';
+                setTimeout(() => {
+                    btn.innerHTML = original;
+                    btn.style.color = '';
+                    btn.style.borderColor = '';
+                }, 1600);
+            }).catch(() => {
+                btn.innerHTML = '<i class="fa-solid fa-xmark"></i> Failed';
+                setTimeout(() => { btn.innerHTML = '<i class="fa-solid fa-copy"></i> Copy'; }, 1600);
+            });
+        }
+    </script>
+</body>
+</html>

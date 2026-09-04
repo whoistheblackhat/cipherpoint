@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Reference | CipherPoint</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .api-page {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 60px 24px 80px;
+        }
+        .api-hero {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+        .api-hero h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #58a6ff 0%, #3fb950 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.8rem;
+        }
+        .api-hero p {
+            color: #8b949e;
+            font-size: 1.05rem;
+        }
+        .api-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 14px;
+            padding: 1.5rem 1.8rem;
+            margin-bottom: 1.2rem;
+        }
+        .api-card h2 {
+            color: #e6edf3;
+            font-size: 1.15rem;
+            font-weight: 600;
+            margin-bottom: 0.6rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .api-card h2 i { color: #58a6ff; }
+        .api-card p { color: #c9d1d9; line-height: 1.65; margin-bottom: 0.8rem; }
+        .api-card ul { color: #c9d1d9; line-height: 1.8; padding-left: 1.4rem; }
+        .api-card code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.85em;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 4px;
+            padding: 1px 6px;
+            color: #79c0ff;
+        }
+        .endpoint {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 14px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.88rem;
+            flex-wrap: wrap;
+        }
+        .method {
+            display: inline-block;
+            min-width: 56px;
+            text-align: center;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 700;
+            font-size: 0.72rem;
+            color: #0d1117;
+        }
+        .method.get { background: #3fb950; }
+        .method.post { background: #58a6ff; }
+        .method.put { background: #d29922; }
+        .method.patch { background: #d29922; }
+        .method.delete { background: #f85149; }
+        .endpoint .path { color: #e6edf3; }
+        .endpoint .desc { color: #8b949e; font-family: 'Inter', sans-serif; font-size: 0.85rem; margin-left: auto; }
+        .swagger-cta {
+            display: block;
+            text-align: center;
+            background: linear-gradient(135deg, rgba(88,166,255,0.12) 0%, rgba(63,185,80,0.12) 100%);
+            border: 1px solid #58a6ff;
+            border-radius: 12px;
+            padding: 1.6rem;
+            margin: 1.5rem 0;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.18s;
+        }
+        .swagger-cta:hover {
+            background: linear-gradient(135deg, rgba(88,166,255,0.2) 0%, rgba(63,185,80,0.2) 100%);
+            transform: translateY(-2px);
+        }
+        .swagger-cta h3 {
+            color: #e6edf3;
+            font-size: 1.3rem;
+            margin-bottom: 0.4rem;
+        }
+        .swagger-cta p { color: #8b949e; }
+        .swagger-cta .icon { font-size: 1.8rem; color: #58a6ff; margin-bottom: 0.4rem; }
+        .topbar { padding: 1rem 0; }
+        .topbar a { color: #c9d1d9; text-decoration: none; margin-left: 1.2rem; font-size: 0.9rem; }
+        .topbar a:hover { color: #58a6ff; }
+    </style>
+</head>
+<body data-page="api-docs">
+    <canvas id="networkCanvas" width="1920" height="1080" style="position:fixed;inset:0;width:100vw;height:100vh;z-index:0;pointer-events:none;display:block;"></canvas>
+
+    <header class="site-header">
+        <nav class="topbar container">
+            <div class="brand-wrap">
+                <a href="index.html" style="text-decoration:none;color:inherit;display:flex;align-items:center;gap:10px;">
+                    <div class="brand-mark-icon"><i class="fa-solid fa-user-secret"></i></div>
+                    <div class="brand-text">CipherPoint</div>
+                </a>
+            </div>
+            <div>
+                <a href="dashboard.html">Dashboard</a>
+                <a href="community.html">Community</a>
+                <a href="about.html">About</a>
+            </div>
+        </nav>
+    </header>
+
+    <main class="api-page">
+        <div class="api-hero">
+            <h1>API Reference</h1>
+            <p>REST endpoints for integrating with CipherPoint. All routes are mounted under <code>/api</code>.</p>
+        </div>
+
+        <a class="swagger-cta" href="/docs" target="_blank" rel="noopener noreferrer">
+            <div class="icon"><i class="fa-solid fa-book-open"></i></div>
+            <h3>Open Interactive Swagger UI <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.9rem;"></i></h3>
+            <p>Try every endpoint, see schemas, and copy curl snippets — powered by FastAPI's built-in OpenAPI docs.</p>
+        </a>
+
+        <div class="api-card">
+            <h2><i class="fa-solid fa-key"></i> Authentication</h2>
+            <p>Most endpoints require a bearer JWT in the <code>Authorization</code> header:</p>
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="path">/api/auth/signup</span>
+                <span class="desc">Create a new account (Turnstile-protected, rate-limited)</span>
+            </div>
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="path">/api/auth/login</span>
+                <span class="desc">Username + password login</span>
+            </div>
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="path">/api/auth/login/otp/request</span>
+                <span class="desc">Send 6-digit OTP to Telegram chat_id</span>
+            </div>
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="path">/api/auth/login/otp/verify</span>
+                <span class="desc">Verify OTP and issue JWT</span>
+            </div>
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="path">/api/auth/me</span>
+                <span class="desc">Return current user profile</span>
+            </div>
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="path">/api/auth/password-reset/request</span>
+                <span class="desc">Request reset token (Telegram)</span>
+            </div>
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="path">/api/auth/password-reset/confirm</span>
+                <span class="desc">Confirm reset with token + new password</span>
+            </div>
+        </div>
+
+        <div class="api-card">
+            <h2><i class="fa-solid fa-flag"></i> Challenges</h2>
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="path">/api/challenges</span>
+                <span class="desc">List approved challenges (cached 60s)</span>
+            </div>
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="path">/api/challenges/community</span>
+                <span class="desc">List community-published challenges</span>
+            </div>
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="path">/api/challenges/{id}</span>
+                <span class="desc">Challenge detail + walkthrough if solved/admin</span>
+            </div>
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="path">/api/challenges/create</span>
+                <span class="desc">Admin: create a curated challenge</span>
+            </div>
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="path">/api/challenges/community/create</span>
+                <span class="desc">User: publish a community challenge</span>
+            </div>
+            <div class="endpoint">
+                <span class="method put">PUT</span>
+                <span class="path">/api/challenges/{id}</span>
+                <span class="desc">Edit challenge (creator / admin)</span>
+            </div>
+            <div class="endpoint">
+                <span class="method delete">DELETE</span>
+                <span class="path">/api/challenges/{id}</span>
+                <span class="desc">Delete challenge (creator / admin)</span>
+            </div>
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="path">/api/challenges/{id}/report</span>
+                <span class="desc">Report a challenge to moderators</span>
+            </div>
+        </div>
+
+        <div class="api-card">
+            <h2><i class="fa-solid fa-paper-plane"></i> Submission & Hints</h2>
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="path">/api/challenges/submit</span>
+                <span class="desc">Submit a flag (rate-limited, self-solve blocked)</span>
+            </div>
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="path">/api/hints/unlock</span>
+                <span class="desc">Spend coins to unlock a hint</span>
+            </div>
+        </div>
+
+        <div class="api-card">
+            <h2><i class="fa-solid fa-trophy"></i> Leaderboard & Profile</h2>
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="path">/api/leaderboard</span>
+                <span class="desc">Top users by rank points (cached 30s)</span>
+            </div>
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="path">/api/profile</span>
+                <span class="desc">Current user profile</span>
+            </div>
+            <div class="endpoint">
+                <span class="method put">PUT</span>
+                <span class="path">/api/profile</span>
+                <span class="desc">Update display name, bio, avatar</span>
+            </div>
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="path">/api/profile/daily-bonus</span>
+                <span class="desc">Claim daily login bonus (UTC day)</span>
+            </div>
+        </div>
+
+        <div class="api-card">
+            <h2><i class="fa-solid fa-gear"></i> Settings</h2>
+            <div class="endpoint">
+                <span class="method put">PUT</span>
+                <span class="path">/api/settings/password</span>
+                <span class="desc">Change password (current + new)</span>
+            </div>
+            <div class="endpoint">
+                <span class="method put">PUT</span>
+                <span class="path">/api/settings/notifications</span>
+                <span class="desc">Update notification preferences</span>
+            </div>
+            <div class="endpoint">
+                <span class="method put">PUT</span>
+                <span class="path">/api/settings/privacy</span>
+                <span class="desc">Update privacy / profile visibility</span>
+            </div>
+            <div class="endpoint">
+                <span class="method delete">DELETE</span>
+                <span class="path">/api/settings/account</span>
+                <span class="desc">Delete own account (irreversible)</span>
+            </div>
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="path">/api/settings/telegram/bot-info</span>
+                <span class="desc">Public bot username for deep links</span>
+            </div>
+            <div class="endpoint">
+                <span class="method put">PUT</span>
+                <span class="path">/api/settings/telegram</span>
+                <span class="desc">Link Telegram chat_id to account</span>
+            </div>
+            <div class="endpoint">
+                <span class="method delete">DELETE</span>
+                <span class="path">/api/settings/telegram/disconnect</span>
+                <span class="desc">Unlink Telegram</span>
+            </div>
+        </div>
+
+        <div class="api-card">
+            <h2><i class="fa-solid fa-shield-halved"></i> Moderation & Admin</h2>
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="path">/api/moderation/reports</span>
+                <span class="desc">Admin: list open reports</span>
+            </div>
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="path">/api/moderation/reports/{id}/resolve</span>
+                <span class="desc">Admin: resolve / dismiss a report</span>
+            </div>
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="path">/api/admin/emergency-reset-password</span>
+                <span class="desc">Admin: reset any user's password (master-key gated)</span>
+            </div>
+        </div>
+
+        <div class="api-card">
+            <h2><i class="fa-solid fa-cloud-arrow-up"></i> Media & Health</h2>
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="path">/api/upload/media</span>
+                <span class="desc">Upload image / video to Telegram (multipart, 100 MB max)</span>
+            </div>
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="path">/api/media/{file_id}</span>
+                <span class="desc">Proxy Telegram media (with caching &amp; download flag)</span>
+            </div>
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="path">/api/health</span>
+                <span class="desc">DB-aware health check</span>
+            </div>
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="path">/api/health/bots</span>
+                <span class="desc">Status of all Telegram bots</span>
+            </div>
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="path">/api/config</span>
+                <span class="desc">Public client config (sitekey, site info)</span>
+            </div>
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="path">/healthz</span>
+                <span class="desc">Liveness probe (no DB)</span>
+            </div>
+        </div>
+
+        <div class="api-card" style="text-align:center;">
+            <h2 style="justify-content:center;"><i class="fa-solid fa-circle-info"></i> Conventions</h2>
+            <p>All requests/responses are <code>application/json</code> unless noted. JWTs expire in 30 minutes — re-authenticate on <code>401</code>. All write endpoints enforce per-IP and per-user rate limits. All admin endpoints require <code>is_admin=true</code> on the JWT subject.</p>
+        </div>
+    </main>
+
+    <footer class="site-footer">
+        <div class="container footer-inner">
+            <div>© 2026 CipherPoint</div>
+            <div class="footer-links">
+                <a href="terms.html">Terms of Service</a>
+                <a href="privacy.html">Privacy Policy</a>
+            </div>
+            <div>Secure OSINT lab infrastructure</div>
+        </div>
+    </footer>
+</body>
+</html>

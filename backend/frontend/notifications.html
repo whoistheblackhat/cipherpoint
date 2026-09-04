@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notifications | CipherPoint</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .notif-page { max-width: 880px; margin: 0 auto; padding: 40px 24px 80px; }
+        .notif-hero { text-align: center; margin-bottom: 2rem; }
+        .notif-hero h1 {
+            font-size: 2.2rem; font-weight: 800;
+            background: linear-gradient(135deg, #58a6ff 0%, #3fb950 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+            margin-bottom: 0.6rem;
+        }
+        .notif-hero p { color: #8b949e; font-size: 1.02rem; }
+        .notif-card {
+            background: #161b22; border: 1px solid #30363d; border-radius: 14px;
+            padding: 1.4rem 1.7rem; margin-bottom: 1.2rem;
+        }
+        .notif-card h2 {
+            color: #e6edf3; font-size: 1.1rem; font-weight: 600; margin-bottom: 1rem;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .notif-card h2 i { color: #58a6ff; }
+        .notif-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 0; border-bottom: 1px solid rgba(48, 54, 61, 0.5); gap: 14px;
+        }
+        .notif-row:last-child { border-bottom: none; }
+        .notif-row .text { flex: 1; }
+        .notif-row .text .title { color: #e6edf3; font-weight: 500; }
+        .notif-row .text .sub { color: #8b949e; font-size: 0.85rem; margin-top: 2px; }
+        /* Switch */
+        .switch { position: relative; display: inline-block; width: 46px; height: 24px; flex-shrink: 0; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .switch .slider {
+            position: absolute; cursor: pointer; inset: 0; background: #30363d;
+            transition: 0.2s; border-radius: 24px;
+        }
+        .switch .slider::before {
+            position: absolute; content: ""; height: 18px; width: 18px;
+            left: 3px; top: 3px; background: #c9d1d9; transition: 0.2s; border-radius: 50%;
+        }
+        .switch input:checked + .slider { background: #3fb950; }
+        .switch input:checked + .slider::before { transform: translateX(22px); background: #0d1117; }
+        .switch input:disabled + .slider { opacity: 0.4; cursor: not-allowed; }
+        .form-message { padding: 10px 14px; border-radius: 8px; margin: 10px 0; font-size: 0.88rem; display: none; }
+        .form-message.show { display: block; }
+        .form-message.success { background: rgba(63,185,80,0.12); border: 1px solid #3fb950; color: #3fb950; }
+        .form-message.error { background: rgba(248,81,73,0.12); border: 1px solid #f85149; color: #f85149; }
+        .form-message.info { background: rgba(88,166,255,0.12); border: 1px solid #58a6ff; color: #58a6ff; }
+        .feed-empty { text-align: center; color: #8b949e; padding: 1.5rem 0; }
+        .feed-list { list-style: none; padding: 0; margin: 0; }
+        .feed-list li {
+            padding: 12px 14px; background: #0d1117; border: 1px solid #30363d;
+            border-radius: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px;
+        }
+        .feed-list li .ico { font-size: 1.1rem; color: #58a6ff; width: 28px; text-align: center; }
+        .feed-list li .text { flex: 1; }
+        .feed-list li .title { color: #e6edf3; font-weight: 500; }
+        .feed-list li .sub { color: #8b949e; font-size: 0.8rem; margin-top: 2px; }
+        .gate { max-width: 480px; margin: 100px auto; background: #161b22; border: 1px solid #30363d; border-radius: 14px; padding: 2.5rem 2rem; text-align: center; }
+        .gate i { font-size: 3rem; color: #58a6ff; margin-bottom: 0.8rem; }
+        .gate h1 { color: #e6edf3; font-size: 1.5rem; margin-bottom: 0.5rem; }
+        .gate p { color: #8b949e; margin-bottom: 1.4rem; }
+        .topbar { padding: 1rem 0; }
+        .topbar a { color: #c9d1d9; text-decoration: none; margin-left: 1.2rem; font-size: 0.9rem; }
+        .topbar a:hover { color: #58a6ff; }
+    </style>
+</head>
+<body data-page="notifications">
+    <canvas id="networkCanvas" width="1920" height="1080" style="position:fixed;inset:0;width:100vw;height:100vh;z-index:0;pointer-events:none;display:block;"></canvas>
+
+    <div id="notifGate" class="gate">
+        <i class="fa-solid fa-bell"></i>
+        <h1>Notifications</h1>
+        <p>Sign in to manage your notification preferences.</p>
+        <a href="login.html" class="btn btn-primary"><i class="fa-solid fa-arrow-right-to-bracket"></i> Sign In</a>
+    </div>
+
+    <main id="notifApp" class="notif-page" style="display:none;">
+        <div class="notif-hero">
+            <h1>Notifications</h1>
+            <p>Choose what CipherPoint buzzes you about. All settings are per-account.</p>
+        </div>
+
+        <div class="notif-card">
+            <h2><i class="fa-solid fa-bell"></i> In-app Preferences</h2>
+            <div class="notif-row">
+                <div class="text">
+                    <div class="title">New challenges</div>
+                    <div class="sub">Get notified when a new curated challenge is published.</div>
+                </div>
+                <label class="switch"><input type="checkbox" id="prefNewChallenges"><span class="slider"></span></label>
+            </div>
+            <div class="notif-row">
+                <div class="text">
+                    <div class="title">Comments & replies</div>
+                    <div class="sub">Activity on threads you've posted in.</div>
+                </div>
+                <label class="switch"><input type="checkbox" id="prefComments"><span class="slider"></span></label>
+            </div>
+            <div class="notif-row">
+                <div class="text">
+                    <div class="title">Mentions</div>
+                    <div class="sub">When another investigator @mentions your username.</div>
+                </div>
+                <label class="switch"><input type="checkbox" id="prefMentions"><span class="slider"></span></label>
+            </div>
+            <div id="prefMessage" class="form-message"></div>
+        </div>
+
+        <div class="notif-card">
+            <h2><i class="fa-brands fa-telegram"></i> Telegram Delivery</h2>
+            <div class="notif-row">
+                <div class="text">
+                    <div class="title">Send to my Telegram</div>
+                    <div class="sub" id="tgSub">Connect Telegram in <a href="settings.html" style="color:#58a6ff;">Settings</a> to enable push delivery.</div>
+                </div>
+                <label class="switch"><input type="checkbox" id="prefTelegram"><span class="slider"></span></label>
+            </div>
+            <div id="tgMessage" class="form-message"></div>
+        </div>
+
+        <div class="notif-card">
+            <h2><i class="fa-solid fa-bolt"></i> Your Activity</h2>
+            <ul class="feed-list" id="activityFeed">
+                <li class="feed-empty">Loading…</li>
+            </ul>
+            <div style="text-align:center;margin-top:12px;">
+                <a href="dashboard.html" class="btn btn-light"><i class="fa-solid fa-gauge-high"></i> Open Dashboard</a>
+            </div>
+        </div>
+    </main>
+
+    <footer class="site-footer">
+        <div class="container footer-inner">
+            <div>© 2026 CipherPoint</div>
+            <div class="footer-links">
+                <a href="terms.html">Terms of Service</a>
+                <a href="privacy.html">Privacy Policy</a>
+            </div>
+            <div>Secure OSINT lab infrastructure</div>
+        </div>
+    </footer>
+
+    <script src="app.js"></script>
+    <script>
+    (() => {
+      const $ = (id) => document.getElementById(id);
+      const token = () => localStorage.getItem('token') || '';
+
+      function showMsg(el, text, kind) {
+        if (!el) return;
+        el.className = 'form-message show ' + (kind || 'info');
+        el.textContent = text;
+        if (kind === 'success') {
+          setTimeout(() => { el.className = 'form-message'; el.textContent = ''; }, 2400);
+        }
+      }
+
+      async function authedFetch(path, options = {}) {
+        const headers = Object.assign(
+          { 'Content-Type': 'application/json' },
+          options.headers || {},
+          token() ? { Authorization: `Bearer ${token()}` } : {}
+        );
+        const res = await fetch('/api' + path, Object.assign({}, options, { headers }));
+        let data = null;
+        try { data = await res.json(); } catch {}
+        return { ok: res.ok, status: res.status, data };
+      }
+
+      async function init() {
+        const u = (() => { try { return JSON.parse(localStorage.getItem('user') || 'null'); } catch { return null; } })();
+        if (!u || !token()) {
+          $('notifGate').style.display = 'block';
+          $('notifApp').style.display = 'none';
+          return;
+        }
+        $('notifGate').style.display = 'none';
+        $('notifApp').style.display = 'block';
+
+        const meRes = await authedFetch('/auth/me');
+        if (!meRes.ok) {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          window.location.href = 'login.html';
+          return;
+        }
+        const me = meRes.data;
+
+        $('prefNewChallenges').checked = Boolean(me.notify_new_challenges);
+        $('prefComments').checked = Boolean(me.notify_comments);
+        $('prefMentions').checked = Boolean(me.notify_mentions);
+        $('prefTelegram').checked = Boolean(me.telegram_notifications);
+
+        const tgConnected = Boolean(me.telegram_chat_id);
+        if (!tgConnected) {
+          $('prefTelegram').disabled = true;
+          $('tgSub').innerHTML = 'Connect Telegram in <a href="settings.html" style="color:#58a6ff;">Settings</a> to enable push delivery.';
+        } else {
+          $('tgSub').textContent = 'Linked to Telegram. You will receive a direct message for each enabled event.';
+        }
+
+        bindSwitch('prefNewChallenges', '/settings/notifications', { notify_new_challenges: null }, 'prefMessage');
+        bindSwitch('prefComments', '/settings/notifications', { notify_comments: null }, 'prefMessage');
+        bindSwitch('prefMentions', '/settings/notifications', { notify_mentions: null }, 'prefMessage');
+        bindTelegramSwitch();
+
+        loadActivity(me);
+      }
+
+      function bindSwitch(inputId, endpoint, bodyTemplate, msgId) {
+        $(inputId).addEventListener('change', async (e) => {
+          const checked = e.target.checked;
+          const body = { ...bodyTemplate };
+          if (inputId === 'prefNewChallenges') body.notify_new_challenges = checked;
+          if (inputId === 'prefComments') body.notify_comments = checked;
+          if (inputId === 'prefMentions') body.notify_mentions = checked;
+          const res = await authedFetch(endpoint, { method: 'PUT', body: JSON.stringify(body) });
+          if (res.ok) {
+            showMsg($(msgId), 'Saved.', 'success');
+            mergeUser(res.data);
+          } else {
+            showMsg($(msgId), (res.data && res.data.detail) || 'Failed to save', 'error');
+            e.target.checked = !checked;
+          }
+        });
+      }
+
+      function bindTelegramSwitch() {
+        $('prefTelegram').addEventListener('change', async (e) => {
+          const checked = e.target.checked;
+          const res = await authedFetch('/settings/telegram', {
+            method: 'PUT',
+            body: JSON.stringify({ enabled: checked })
+          });
+          if (res.ok) {
+            showMsg($('tgMessage'), checked ? 'Telegram notifications enabled.' : 'Telegram notifications disabled.', 'success');
+            mergeUser(res.data);
+          } else {
+            showMsg($('tgMessage'), (res.data && res.data.detail) || 'Failed to save', 'error');
+            e.target.checked = !checked;
+          }
+        });
+      }
+
+      function mergeUser(patch) {
+        try {
+          const u = JSON.parse(localStorage.getItem('user') || '{}');
+          Object.assign(u, patch);
+          localStorage.setItem('user', JSON.stringify(u));
+        } catch {}
+      }
+
+      async function loadActivity(me) {
+        const feed = $('activityFeed');
+        feed.innerHTML = '';
+        const items = [];
+
+        if (me.solved_count) {
+          items.push({
+            icon: 'fa-flag-checkered',
+            title: `${me.solved_count} challenge${me.solved_count === 1 ? '' : 's'} solved`,
+            sub: 'Click "Solved" on the dashboard to revisit any of them.',
+            href: 'dashboard.html'
+          });
+        }
+        if (me.coins || me.rank_points) {
+          items.push({
+            icon: 'fa-coins',
+            title: `${me.coins || 0} coins · ${me.rank_points || 0} rank points`,
+            sub: 'Earn more by solving daily challenges and posting community cases.',
+            href: 'leaderboard.html'
+          });
+        }
+        if (me.telegram_chat_id) {
+          items.push({
+            icon: 'fa-brands fa-telegram',
+            title: 'Telegram linked',
+            sub: 'OTP login and push notifications are active.',
+            href: 'settings.html'
+          });
+        } else {
+          items.push({
+            icon: 'fa-brands fa-telegram',
+            title: 'Link your Telegram',
+            sub: 'Passwordless login and instant push notifications.',
+            href: 'settings.html'
+          });
+        }
+        if (me.is_admin) {
+          items.push({
+            icon: 'fa-user-shield',
+            title: 'Admin access active',
+            sub: 'You can moderate reports and manage users.',
+            href: 'admin.html'
+          });
+        }
+
+        if (!items.length) {
+          feed.innerHTML = '<li class="feed-empty">Nothing here yet. Solve a challenge to start your activity log.</li>';
+          return;
+        }
+        items.forEach(it => {
+          const li = document.createElement('li');
+          li.innerHTML = `
+            <div class="ico"><i class="fa-solid ${it.icon}"></i></div>
+            <div class="text">
+              <div class="title">${escapeHtml(it.title)}</div>
+              <div class="sub">${escapeHtml(it.sub)}</div>
+            </div>
+            <a class="btn-icon" href="${it.href}"><i class="fa-solid fa-arrow-right"></i></a>
+          `;
+          feed.appendChild(li);
+        });
+      }
+
+      function escapeHtml(s) {
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else { init(); }
+    })();
+    </script>
+</body>
+</html>

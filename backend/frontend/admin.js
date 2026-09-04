@@ -1,0 +1,398 @@
+(() => {
+  const API_BASE = '/api';
+  const $ = (id) => document.getElementById(id);
+
+  const token = () => localStorage.getItem('token') || '';
+  const user = () => {
+    try { return JSON.parse(localStorage.getItem('user') || 'null'); } catch { return null; }
+  };
+
+  function showMessage(el, text, kind) {
+    if (!el) return;
+    el.className = 'form-message show ' + (kind || 'info');
+    el.textContent = text;
+  }
+  function hideMessage(el) {
+    if (!el) return;
+    el.className = 'form-message';
+    el.textContent = '';
+  }
+
+  async function authedFetch(path, options = {}) {
+    const headers = Object.assign(
+      { 'Content-Type': 'application/json' },
+      options.headers || {},
+      token() ? { Authorization: `Bearer ${token()}` } : {}
+    );
+    const res = await fetch(API_BASE + path, Object.assign({}, options, { headers }));
+    let data = null;
+    try { data = await res.json(); } catch { /* non-JSON */ }
+    return { ok: res.ok, status: res.status, data };
+  }
+
+  async function init() {
+    const u = user();
+    if (!u || !u.is_admin) {
+      $('adminGate').style.display = 'block';
+      $('adminApp').style.display = 'none';
+      return;
+    }
+    $('adminGate').style.display = 'none';
+    $('adminApp').style.display = 'block';
+    $('adminUsername').textContent = u.username || ('user#' + u.id);
+
+    setupTabs();
+    setupCreate();
+    setupEdit();
+    setupUsers();
+    setupModeration();
+
+    await loadStats();
+    await loadEditList();
+    await loadModerationList();
+
+    $('adminLogout').addEventListener('click', (e) => {
+      e.preventDefault();
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = 'login.html';
+    });
+  }
+
+  function setupTabs() {
+    const tabs = document.querySelectorAll('.admin-tab');
+    const panels = document.querySelectorAll('.admin-panel');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const name = tab.dataset.tab;
+        tabs.forEach(t => t.classList.toggle('active', t === tab));
+        panels.forEach(p => p.classList.toggle('active', p.dataset.panel === name));
+      });
+    });
+  }
+
+  // -------- STATS --------
+  async function loadStats() {
+    try {
+      const [usersRes, chRes, repRes] = await Promise.all([
+        authedFetch('/admin/users?limit=1'),
+        authedFetch('/challenges?limit=1'),
+        authedFetch('/moderation/reports')
+      ]);
+      if (usersRes.ok && usersRes.data && typeof usersRes.data.total === 'number') {
+        $('statUsers').textContent = usersRes.data.total;
+      } else {
+        $('statUsers').textContent = '—';
+      }
+      if (chRes.ok && Array.isArray(chRes.data)) {
+        $('statChallenges').textContent = chRes.data.length || '—';
+      } else {
+        $('statChallenges').textContent = '—';
+      }
+      if (repRes.ok && Array.isArray(repRes.data)) {
+        $('statReports').textContent = repRes.data.length;
+      } else {
+        $('statReports').textContent = '—';
+      }
+    } catch (err) {
+      console.warn('loadStats failed', err);
+    }
+  }
+
+  // -------- CREATE --------
+  function setupCreate() {
+    const form = $('adminCreateForm');
+    const msg = $('adminCreateMessage');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideMessage(msg);
+      const fd = new FormData(form);
+      const payload = {
+        title: (fd.get('title') || '').toString().trim(),
+        category: (fd.get('category') || 'OSINT').toString().trim() || 'OSINT',
+        difficulty: (fd.get('difficulty') || 'Medium').toString(),
+        description: (fd.get('description') || '').toString().trim(),
+        correct_flag: (fd.get('flag') || '').toString().trim(),
+        telegram_file_id: (fd.get('telegram_file_id') || '').toString().trim(),
+        points_reward: parseInt(fd.get('points') || '100', 10),
+        hint_1: '',
+        hint_1_cost: 10,
+        solution_walkthrough: (fd.get('walkthrough') || '').toString().trim(),
+        tags: (fd.get('tags') || '').toString().trim()
+      };
+
+      if (!payload.title || !payload.description || !payload.correct_flag) {
+        showMessage(msg, 'Title, description, and flag are required.', 'error');
+        return;
+      }
+      showMessage(msg, 'Creating…', 'info');
+      const res = await authedFetch('/challenges/create', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        showMessage(msg, `Created challenge #${res.data.id} — ${res.data.title}`, 'success');
+        form.reset();
+        await loadEditList();
+        await loadStats();
+      } else {
+        showMessage(msg, (res.data && res.data.detail) || 'Failed to create challenge', 'error');
+      }
+    });
+  }
+
+  // -------- EDIT / DELETE --------
+  async function loadEditList() {
+    const list = $('editChallengeList');
+    const msg = $('editListMessage');
+    hideMessage(msg);
+    list.innerHTML = '<li style="text-align:center;color:#8b949e;">Loading…</li>';
+    const res = await authedFetch('/challenges?limit=200');
+    if (!res.ok) {
+      list.innerHTML = '';
+      showMessage(msg, 'Failed to load challenges.', 'error');
+      return;
+    }
+    const items = Array.isArray(res.data) ? res.data : [];
+    if (!items.length) {
+      list.innerHTML = '<li style="text-align:center;color:#8b949e;">No challenges yet.</li>';
+      return;
+    }
+    list.innerHTML = '';
+    items.forEach(ch => {
+      const li = document.createElement('li');
+      const diff = (ch.difficulty || 'medium').toLowerCase();
+      li.innerHTML = `
+        <div class="meta-block">
+          <div class="title">#${ch.id} — ${escapeHtml(ch.title || '(no title)')}</div>
+          <div class="sub">${escapeHtml(ch.category || '')} · ${ch.points_reward || ch.points || 0} pts · <span class="tag ${diff}">${escapeHtml(ch.difficulty || 'Medium')}</span></div>
+        </div>
+        <button class="btn-icon" data-action="edit" data-id="${ch.id}"><i class="fa-solid fa-pen"></i> Edit</button>
+        <button class="btn-icon danger" data-action="delete" data-id="${ch.id}" data-title="${escapeAttr(ch.title || '')}"><i class="fa-solid fa-trash"></i> Delete</button>
+      `;
+      list.appendChild(li);
+    });
+  }
+
+  function setupEdit() {
+    const list = $('editChallengeList');
+    const modal = $('editChallengeModal');
+    const editForm = $('adminEditForm');
+    const editMsg = $('adminEditMessage');
+    $('editCancel').addEventListener('click', () => modal.classList.remove('show'));
+
+    list.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      if (btn.dataset.action === 'edit') {
+        editMsg.className = 'form-message';
+        editMsg.textContent = '';
+        const res = await authedFetch('/challenges/' + id);
+        if (!res.ok) {
+          alert('Failed to load challenge');
+          return;
+        }
+        const ch = res.data;
+        editForm.elements['id'].value = ch.id;
+        editForm.elements['title'].value = ch.title || '';
+        editForm.elements['difficulty'].value = ch.difficulty || 'Medium';
+        editForm.elements['points'].value = ch.points_reward || ch.points || 100;
+        editForm.elements['description'].value = ch.description || '';
+        editForm.elements['walkthrough'].value = ch.solution_walkthrough || ch.walkthrough || '';
+        modal.classList.add('show');
+      } else if (btn.dataset.action === 'delete') {
+        const title = btn.dataset.title || ('challenge #' + id);
+        if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
+        const res = await authedFetch('/challenges/' + id, { method: 'DELETE' });
+        if (res.ok) {
+          showMessage($('editListMessage'), 'Deleted.', 'success');
+          await loadEditList();
+        } else {
+          showMessage($('editListMessage'), (res.data && res.data.detail) || 'Delete failed', 'error');
+        }
+      }
+    });
+
+    editForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      editMsg.className = 'form-message';
+      editMsg.textContent = '';
+      const fd = new FormData(editForm);
+      const id = fd.get('id');
+      const payload = {
+        title: (fd.get('title') || '').toString().trim(),
+        difficulty: (fd.get('difficulty') || 'Medium').toString(),
+        points_reward: parseInt(fd.get('points') || '100', 10),
+        description: (fd.get('description') || '').toString().trim(),
+        solution_walkthrough: (fd.get('walkthrough') || '').toString().trim()
+      };
+      showMessage(editMsg, 'Saving…', 'info');
+      const res = await authedFetch('/challenges/' + id, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        showMessage(editMsg, 'Saved.', 'success');
+        await loadEditList();
+        setTimeout(() => modal.classList.remove('show'), 600);
+      } else {
+        showMessage(editMsg, (res.data && res.data.detail) || 'Save failed', 'error');
+      }
+    });
+  }
+
+  // -------- USERS --------
+  function setupUsers() {
+    const search = $('userSearch');
+    const btn = $('userSearchBtn');
+    const list = $('userList');
+    const msg = $('userListMessage');
+
+    async function run() {
+      hideMessage(msg);
+      const q = (search.value || '').trim();
+      if (!q) { list.innerHTML = '<li style="text-align:center;color:#8b949e;">Type a username, email, or ID.</li>'; return; }
+      list.innerHTML = '<li style="text-align:center;color:#8b949e;">Searching…</li>';
+      const res = await authedFetch(`/admin/users?q=${encodeURIComponent(q)}`);
+      if (!res.ok) {
+        list.innerHTML = '';
+        showMessage(msg, (res.data && res.data.detail) || 'Search failed', 'error');
+        return;
+      }
+      const users = Array.isArray(res.data) ? res.data : (res.data && res.data.items) || [];
+      if (!users.length) {
+        list.innerHTML = '<li style="text-align:center;color:#8b949e;">No matches.</li>';
+        return;
+      }
+      list.innerHTML = '';
+      users.forEach(u => {
+        const li = document.createElement('li');
+        const badges = [];
+        if (u.is_admin) badges.push('<span class="tag admin">admin</span>');
+        if (u.banned) badges.push('<span class="tag banned">banned</span>');
+        if (u.is_active !== false && !u.banned) badges.push('<span class="tag active">active</span>');
+        li.innerHTML = `
+          <div class="meta-block">
+            <div class="title">#${u.id} ${escapeHtml(u.username || '')} ${badges.join(' ')}</div>
+            <div class="sub">${escapeHtml(u.email || '')} · ${u.coins || 0} coins · ${u.rank_points || 0} pts · joined ${escapeHtml(u.created_at || '')}</div>
+          </div>
+          <button class="btn-icon danger" data-action="ban" data-id="${u.id}" data-name="${escapeAttr(u.username || '')}"><i class="fa-solid fa-gavel"></i> Ban</button>
+        `;
+        list.appendChild(li);
+      });
+    }
+
+    btn.addEventListener('click', run);
+    search.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); run(); } });
+
+    // Ban modal
+    const banModal = $('banUserModal');
+    const banForm = $('banUserForm');
+    $('banCancel').addEventListener('click', () => banModal.classList.remove('show'));
+
+    list.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-action="ban"]');
+      if (!btn) return;
+      banForm.elements['userId'].value = btn.dataset.id;
+      banForm.elements['reason'].value = '';
+      banForm.elements['days'].value = '0';
+      banModal.classList.add('show');
+    });
+
+    banForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(banForm);
+      const payload = {
+        user_id: parseInt(fd.get('userId'), 10),
+        reason: (fd.get('reason') || '').toString().trim(),
+        days: parseInt(fd.get('days') || '0', 10)
+      };
+      const res = await authedFetch('/admin/users/ban', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        showMessage(msg, 'User banned.', 'success');
+        banModal.classList.remove('show');
+        run();
+      } else {
+        showMessage(msg, (res.data && res.data.detail) || 'Ban failed', 'error');
+      }
+    });
+  }
+
+  // -------- MODERATION --------
+  async function loadModerationList() {
+    const list = $('moderationList');
+    const msg = $('moderationMessage');
+    hideMessage(msg);
+    list.innerHTML = '<li style="text-align:center;color:#8b949e;">Loading…</li>';
+    const res = await authedFetch('/moderation/reports');
+    if (!res.ok) {
+      list.innerHTML = '';
+      showMessage(msg, 'Failed to load reports.', 'error');
+      return;
+    }
+    const reports = Array.isArray(res.data) ? res.data : [];
+    if (!reports.length) {
+      list.innerHTML = '<li style="text-align:center;color:#8b949e;">No open reports. Nice and quiet.</li>';
+      return;
+    }
+    list.innerHTML = '';
+    reports.forEach(r => {
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <div class="meta-block">
+          <div class="title">Report #${r.id} — ${escapeHtml(r.target_type || 'challenge')} on "${escapeHtml(r.challenge_title || '')}"</div>
+          <div class="sub"><b>Reporter:</b> ${escapeHtml(r.reporter || '?')} · <b>Reason:</b> ${escapeHtml(r.reason || '—')} · ${escapeHtml(r.created_at || '')}</div>
+          ${r.comment_body ? `<div class="sub" style="margin-top:6px;padding:8px;background:#161b22;border-left:2px solid #f85149;">${escapeHtml(r.comment_body)}</div>` : ''}
+        </div>
+        <button class="btn-icon" data-action="approve" data-id="${r.id}"><i class="fa-solid fa-check"></i> Approve</button>
+        <button class="btn-icon" data-action="reject" data-id="${r.id}"><i class="fa-solid fa-xmark"></i> Reject</button>
+        <button class="btn-icon danger" data-action="ban" data-id="${r.id}"><i class="fa-solid fa-gavel"></i> Ban</button>
+      `;
+      list.appendChild(li);
+    });
+  }
+
+  function setupModeration() {
+    const list = $('moderationList');
+    const msg = $('moderationMessage');
+    list.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      const action = btn.dataset.action;
+      const reason = prompt(`Reason for ${action} (optional):`) || '';
+      hideMessage(msg);
+      const res = await authedFetch(`/moderation/reports/${id}/resolve`, {
+        method: 'POST',
+        body: JSON.stringify({ action, reason })
+      });
+      if (res.ok) {
+        showMessage(msg, `Report #${id} resolved (${action}).`, 'success');
+        await loadModerationList();
+        await loadStats();
+      } else {
+        showMessage(msg, (res.data && res.data.detail) || 'Resolve failed', 'error');
+      }
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+  function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();

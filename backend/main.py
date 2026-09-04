@@ -84,6 +84,65 @@ def verify_turnstile_token(token: str | None, remote_ip: str | None = None) -> b
 # Initialize FastAPI app
 app = FastAPI(title="CipherPoint API", version="1.0.0")
 
+
+# ==================== ERROR HANDLERS ====================
+
+def _wants_html(request: Request) -> bool:
+    """Return True if the client likely expects HTML (browser navigation)."""
+    accept = (request.headers.get("accept") or "").lower()
+    if "text/html" in accept or "*/*" in accept:
+        # Only redirect GET browser requests, not API callers
+        if request.method == "GET" and not request.url.path.startswith("/api/"):
+            return True
+    return False
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Custom HTTP exception handler.
+
+    - Browser GET requests for non-API pages get redirected to the matching
+      branded HTML page (404 -> /404.html, 500/503 -> /500.html) so the user
+      never sees a raw JSON error in a tab.
+    - API requests and all non-GET methods get the standard JSON response.
+    """
+    if exc.status_code == 404 and _wants_html(request):
+        return FileResponse(os.path.join(FRONTEND_DIR, "404.html"), status_code=404)
+    if exc.status_code in (500, 503) and _wants_html(request):
+        return FileResponse(os.path.join(FRONTEND_DIR, "500.html"), status_code=exc.status_code)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=exc.headers or None,
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Last-resort handler for unhandled exceptions.
+
+    Logs to the server console (visible in Render logs) and either returns
+    a JSON 500 for API callers or renders the branded 500 page for browsers.
+    """
+    import traceback
+    trace_id = f"cp-{int(time.time())}-{secrets.token_hex(3)}"
+    print(f"[{trace_id}] unhandled exception on {request.method} {request.url.path}: {exc}")
+    print(traceback.format_exc())
+
+    if _wants_html(request):
+        return FileResponse(
+            os.path.join(FRONTEND_DIR, "500.html"),
+            status_code=500,
+            headers={"X-CipherPoint-Trace": trace_id},
+        )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error", "trace_id": trace_id},
+    )
+
+
+# ==================== END ERROR HANDLERS ====================
+
 # CORS Middleware — never use "*" in production. If FRONTEND_URL is not
 # set we fall back to the public site URL and the onrender.com default.
 _frontend_url = os.getenv("FRONTEND_URL", "").strip()
@@ -1283,6 +1342,160 @@ def emergency_reset_password(payload: EmergencyResetRequest, db: Session = Depen
     db.commit()
     return {"message": f"Password reset for {user.username}", "username": user.username}
 
+
+# ==================== ADMIN USER MANAGEMENT ====================
+
+class AdminBanRequest(BaseModel):
+    user_id: int
+    reason: str
+    days: int = 0  # 0 = permanent
+
+
+@app.get("/api/admin/users")
+def admin_list_users(
+    q: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Admin: list or search users.
+
+    If `q` is provided, performs a case-insensitive partial match on username
+    or email, or an exact ID match. Returns up to `limit` users (default 50).
+    The response is intentionally minimal — never include password_hash.
+    """
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+
+    base_query = db.query(User)
+    if q:
+        q_clean = q.strip()
+        if q_clean.isdigit():
+            base_query = base_query.filter(User.id == int(q_clean))
+        else:
+            like = f"%{q_clean.lower()}%"
+            base_query = base_query.filter(
+                (func.lower(User.username).like(like)) | (func.lower(User.email).like(like))
+            )
+
+    total = base_query.count()
+    users = (
+        base_query
+        .order_by(User.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    # Build a set of banned user IDs in a single query (avoids N+1)
+    banned_ids = {
+        row.user_id
+        for row in db.query(UserBan.user_id).all()
+    }
+
+    items = []
+    for u in users:
+        items.append({
+            "id": u.id,
+            "username": u.username,
+            "email": u.email,
+            "is_admin": bool(getattr(u, "is_admin", False)),
+            "banned": u.id in banned_ids,
+            "coins": u.coins or 0,
+            "rank_points": u.rank_points or 0,
+            "created_at": u.created_at.isoformat() if u.created_at else None,
+        })
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
+@app.post("/api/admin/users/ban")
+def admin_ban_user(
+    payload: AdminBanRequest,
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Admin: ban a user.
+
+    If `days` > 0 the ban is created with an expiry; permanent otherwise.
+    Idempotent: re-banning an already banned user updates the reason and
+    extends the ban window. The target user is notified via Telegram if
+    their chat_id is linked.
+    """
+    reason = (payload.reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="Ban reason is required")
+    if len(reason) > 1000:
+        raise HTTPException(status_code=400, detail="Ban reason too long (max 1000 chars)")
+
+    target = db.query(User).filter(User.id == payload.user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.id == admin_user.id:
+        raise HTTPException(status_code=400, detail="You cannot ban yourself")
+    if getattr(target, "is_admin", False):
+        raise HTTPException(status_code=400, detail="You cannot ban another admin")
+
+    existing = db.query(UserBan).filter(UserBan.user_id == target.id).first()
+    expires_at = None
+    if payload.days and payload.days > 0:
+        expires_at = datetime.utcnow() + timedelta(days=int(payload.days))
+
+    if existing:
+        existing.reason = reason
+        existing.banned_by = admin_user.id
+        existing.banned_at = datetime.utcnow()
+        if hasattr(existing, "expires_at"):
+            existing.expires_at = expires_at
+    else:
+        ban = UserBan(
+            user_id=target.id,
+            reason=reason,
+            banned_by=admin_user.id,
+        )
+        if hasattr(ban, "expires_at"):
+            ban.expires_at = expires_at
+        db.add(ban)
+
+    db.commit()
+
+    # Notify via Telegram if linked
+    if getattr(target, "telegram_chat_id", None):
+        try:
+            duration = f"{payload.days} days" if payload.days and payload.days > 0 else "permanently"
+            send_user_notification(
+                str(target.telegram_chat_id),
+                "🚫 <b>Account suspended</b>\n\n"
+                f"Your CipherPoint account has been suspended {duration} by {admin_user.username}.\n\n"
+                f"<b>Reason:</b> {escape_html(reason)}"
+            )
+        except Exception as exc:
+            print(f"[admin-ban] telegram notify failed for user {target.id}: {exc}")
+
+    return {
+        "message": f"User {target.username} banned",
+        "user_id": target.id,
+        "username": target.username,
+        "expires_at": expires_at.isoformat() if expires_at else None,
+    }
+
+
+@app.post("/api/admin/users/unban")
+def admin_unban_user(
+    payload: AdminBanRequest,
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Admin: lift a ban. The `reason` and `days` fields are ignored."""
+    existing = db.query(UserBan).filter(UserBan.user_id == payload.user_id).first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="User is not banned")
+    db.delete(existing)
+    db.commit()
+    return {"message": "Ban lifted", "user_id": payload.user_id}
+
+
+# ==================== NOTIFICATIONS SETTINGS ====================
 
 class NotificationSettingsRequest(BaseModel):
     notify_new_challenges: bool | None = None
@@ -2563,6 +2776,14 @@ if os.path.isdir(FRONTEND_DIR):
     @app.get("/settings.html", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/privacy.html", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/terms.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/forgot-password.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/about.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/api-docs.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/admin.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/notifications.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/contact.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/404.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/500.html", response_class=HTMLResponse, include_in_schema=False)
     async def serve_html_page(request: Request):
         """Serve any *.html file from the frontend directory."""
         filename = request.url.path.lstrip("/")

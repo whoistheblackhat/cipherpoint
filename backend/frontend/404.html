@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 — Not Found | CipherPoint</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .error-page {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+        .error-card {
+            max-width: 520px;
+            text-align: center;
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 16px;
+            padding: 3rem 2rem;
+        }
+        .error-code {
+            font-size: 5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #58a6ff 0%, #3fb950 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1;
+            margin-bottom: 0.5rem;
+        }
+        .error-title {
+            color: #e6edf3;
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin: 0.5rem 0 0.8rem;
+        }
+        .error-msg {
+            color: #8b949e;
+            font-size: 0.95rem;
+            margin-bottom: 2rem;
+        }
+        .error-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .error-glyph {
+            font-size: 3rem;
+            color: #58a6ff;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body data-page="error-404">
+    <canvas id="networkCanvas" width="1920" height="1080" style="position:fixed;inset:0;width:100vw;height:100vh;z-index:0;pointer-events:none;display:block;"></canvas>
+
+    <div class="error-page">
+        <div class="error-card">
+            <div class="error-glyph"><i class="fa-solid fa-magnifying-glass"></i></div>
+            <div class="error-code">404</div>
+            <h1 class="error-title">Case File Missing</h1>
+            <p class="error-msg">The page you're looking for doesn't exist on this server. The intel trail has gone cold.</p>
+            <div class="error-actions">
+                <a href="index.html" class="btn btn-primary"><i class="fa-solid fa-house"></i> Go Home</a>
+                <a href="dashboard.html" class="btn btn-light"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+                <a href="javascript:history.back()" class="btn btn-light"><i class="fa-solid fa-arrow-left"></i> Go Back</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

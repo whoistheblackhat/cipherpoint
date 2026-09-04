@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Console | CipherPoint</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .admin-page {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px 24px 60px;
+        }
+        .admin-gate {
+            max-width: 480px;
+            margin: 100px auto;
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 14px;
+            padding: 2.5rem 2rem;
+            text-align: center;
+        }
+        .admin-gate i { font-size: 3rem; color: #f85149; margin-bottom: 0.8rem; }
+        .admin-gate h1 { color: #e6edf3; font-size: 1.5rem; margin-bottom: 0.5rem; }
+        .admin-gate p { color: #8b949e; margin-bottom: 1.4rem; }
+        .admin-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 1.6rem;
+        }
+        .admin-header h1 {
+            color: #e6edf3;
+            font-size: 1.6rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .admin-header h1 i { color: #d29922; }
+        .admin-header .meta { color: #8b949e; font-size: 0.85rem; }
+        .admin-header .meta strong { color: #58a6ff; }
+        .admin-tabs {
+            display: flex;
+            gap: 4px;
+            border-bottom: 1px solid #30363d;
+            margin-bottom: 1.5rem;
+            overflow-x: auto;
+        }
+        .admin-tab {
+            background: transparent;
+            border: none;
+            color: #8b949e;
+            padding: 10px 18px;
+            font-size: 0.92rem;
+            font-weight: 500;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+        .admin-tab:hover { color: #c9d1d9; }
+        .admin-tab.active {
+            color: #58a6ff;
+            border-bottom-color: #58a6ff;
+        }
+        .admin-tab i { margin-right: 6px; }
+        .admin-panel {
+            display: none;
+        }
+        .admin-panel.active { display: block; }
+        .admin-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 1.4rem 1.6rem;
+            margin-bottom: 1.2rem;
+        }
+        .admin-card h2 {
+            color: #e6edf3;
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .admin-card h2 i { color: #58a6ff; }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .form-row.full { grid-template-columns: 1fr; }
+        .form-row label {
+            display: block;
+            color: #c9d1d9;
+            font-size: 0.85rem;
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+        .form-row input,
+        .form-row textarea,
+        .form-row select {
+            width: 100%;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 10px 12px;
+            color: #e6edf3;
+            font-size: 0.9rem;
+            font-family: inherit;
+        }
+        .form-row input:focus,
+        .form-row textarea:focus,
+        .form-row select:focus {
+            outline: none;
+            border-color: #58a6ff;
+        }
+        .form-row textarea { min-height: 80px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; }
+        .form-row .hint { color: #6e7681; font-size: 0.75rem; margin-top: 3px; }
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 14px;
+            flex-wrap: wrap;
+        }
+        .form-message {
+            padding: 10px 14px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-size: 0.88rem;
+            display: none;
+        }
+        .form-message.show { display: block; }
+        .form-message.success { background: rgba(63,185,80,0.12); border: 1px solid #3fb950; color: #3fb950; }
+        .form-message.error { background: rgba(248,81,73,0.12); border: 1px solid #f85149; color: #f85149; }
+        .form-message.info { background: rgba(88,166,255,0.12); border: 1px solid #58a6ff; color: #58a6ff; }
+        .admin-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .admin-list li {
+            padding: 12px 14px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .admin-list .meta-block { flex: 1; min-width: 220px; }
+        .admin-list .meta-block .title { color: #e6edf3; font-weight: 500; }
+        .admin-list .meta-block .sub { color: #8b949e; font-size: 0.8rem; margin-top: 2px; }
+        .admin-list .tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-right: 4px;
+        }
+        .tag.easy { background: rgba(63,185,80,0.15); color: #3fb950; }
+        .tag.medium { background: rgba(210,153,34,0.15); color: #d29922; }
+        .tag.hard { background: rgba(248,81,73,0.15); color: #f85149; }
+        .tag.admin { background: rgba(210,153,34,0.15); color: #d29922; }
+        .tag.banned { background: rgba(248,81,73,0.15); color: #f85149; }
+        .tag.active { background: rgba(63,185,80,0.15); color: #3fb950; }
+        .btn-icon {
+            background: transparent;
+            border: 1px solid #30363d;
+            color: #8b949e;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .btn-icon:hover { border-color: #58a6ff; color: #58a6ff; }
+        .btn-icon.danger:hover { border-color: #f85149; color: #f85149; }
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-bottom: 1.5rem;
+        }
+        .stat-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 10px;
+            padding: 1rem 1.2rem;
+        }
+        .stat-card .label { color: #8b949e; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        .stat-card .value { color: #e6edf3; font-size: 1.6rem; font-weight: 700; margin-top: 4px; }
+        .stat-card .value i { font-size: 1.2rem; margin-right: 6px; }
+        .modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 14px;
+            padding: 1.6rem;
+            max-width: 480px;
+            width: 100%;
+        }
+        .modal-card h3 { color: #e6edf3; margin-bottom: 1rem; }
+        .modal-card .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 1.2rem; }
+    </style>
+</head>
+<body data-page="admin">
+    <canvas id="networkCanvas" width="1920" height="1080" style="position:fixed;inset:0;width:100vw;height:100vh;z-index:0;pointer-events:none;display:block;"></canvas>
+
+    <div id="adminGate" class="admin-gate">
+        <i class="fa-solid fa-shield-halved"></i>
+        <h1>Admin Console</h1>
+        <p>You need to be signed in as an administrator to access this page.</p>
+        <a href="login.html" class="btn btn-primary"><i class="fa-solid fa-arrow-right-to-bracket"></i> Sign In</a>
+    </div>
+
+    <main id="adminApp" class="admin-page" style="display:none;">
+        <div class="admin-header">
+            <h1><i class="fa-solid fa-user-shield"></i> Admin Console</h1>
+            <div class="meta">
+                Signed in as <strong id="adminUsername">—</strong>
+                · <a href="dashboard.html" style="color:#58a6ff;text-decoration:none;">Dashboard</a>
+                · <a href="#" id="adminLogout" style="color:#f85149;text-decoration:none;">Sign out</a>
+            </div>
+        </div>
+
+        <div class="stat-grid" id="adminStats">
+            <div class="stat-card">
+                <div class="label">Total Users</div>
+                <div class="value" id="statUsers">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Challenges</div>
+                <div class="value" id="statChallenges">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Open Reports</div>
+                <div class="value" id="statReports">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Solves (24h)</div>
+                <div class="value" id="statSolves">—</div>
+            </div>
+        </div>
+
+        <div class="admin-tabs">
+            <button class="admin-tab active" data-tab="create"><i class="fa-solid fa-plus"></i> Create Challenge</button>
+            <button class="admin-tab" data-tab="edit"><i class="fa-solid fa-pen-to-square"></i> Edit / Delete</button>
+            <button class="admin-tab" data-tab="users"><i class="fa-solid fa-users"></i> User Management</button>
+            <button class="admin-tab" data-tab="moderation"><i class="fa-solid fa-flag"></i> Moderation Queue</button>
+        </div>
+
+        <!-- CREATE -->
+        <section class="admin-panel active" data-panel="create">
+            <div class="admin-card">
+                <h2><i class="fa-solid fa-plus-circle"></i> New Curated Challenge</h2>
+                <form id="adminCreateForm">
+                    <div class="form-row">
+                        <div>
+                            <label>Title</label>
+                            <input name="title" maxlength="120" required>
+                            <div class="hint">Up to 120 characters.</div>
+                        </div>
+                        <div>
+                            <label>Category</label>
+                            <input name="category" maxlength="60" placeholder="GEOINT, Video, Metadata, ...">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div>
+                            <label>Difficulty</label>
+                            <select name="difficulty" required>
+                                <option value="Easy">Easy</option>
+                                <option value="Medium" selected>Medium</option>
+                                <option value="Hard">Hard</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>Points (10-1000)</label>
+                            <input name="points" type="number" min="10" max="1000" value="100" required>
+                        </div>
+                    </div>
+                    <div class="form-row full">
+                        <div>
+                            <label>Description</label>
+                            <textarea name="description" maxlength="4000" required></textarea>
+                            <div class="hint">The intel brief. Up to 4000 characters.</div>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div>
+                            <label>Flag</label>
+                            <input name="flag" maxlength="200" required style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">
+                            <div class="hint">The exact flag value, no leading/trailing spaces.</div>
+                        </div>
+                        <div>
+                            <label>Walkthrough (visible to solvers)</label>
+                            <textarea name="walkthrough" maxlength="4000"></textarea>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div>
+                            <label>Telegram file_id (optional)</label>
+                            <input name="telegram_file_id" maxlength="256" placeholder="BAACAgIAAxk...">
+                            <div class="hint">If your image is already in the channel, paste the file_id.</div>
+                        </div>
+                        <div>
+                            <label>Tags (comma-separated)</label>
+                            <input name="tags" maxlength="200" placeholder="exif, geoint, satellite">
+                        </div>
+                    </div>
+                    <div id="adminCreateMessage" class="form-message"></div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Create Challenge</button>
+                        <button type="reset" class="btn btn-light"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- EDIT / DELETE -->
+        <section class="admin-panel" data-panel="edit">
+            <div class="admin-card">
+                <h2><i class="fa-solid fa-pen-to-square"></i> Existing Challenges</h2>
+                <div id="editListMessage" class="form-message"></div>
+                <ul class="admin-list" id="editChallengeList">
+                    <li style="text-align:center;color:#8b949e;">Loading…</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- USERS -->
+        <section class="admin-panel" data-panel="users">
+            <div class="admin-card">
+                <h2><i class="fa-solid fa-users"></i> User Management</h2>
+                <div class="form-row">
+                    <div>
+                        <label>Search by username / email / ID</label>
+                        <input id="userSearch" type="text" placeholder="Start typing…">
+                    </div>
+                    <div>
+                        <label>&nbsp;</label>
+                        <button id="userSearchBtn" class="btn btn-primary"><i class="fa-solid fa-magnifying-glass"></i> Search</button>
+                    </div>
+                </div>
+                <div id="userListMessage" class="form-message"></div>
+                <ul class="admin-list" id="userList">
+                    <li style="text-align:center;color:#8b949e;">Use the search above to find a user.</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- MODERATION -->
+        <section class="admin-panel" data-panel="moderation">
+            <div class="admin-card">
+                <h2><i class="fa-solid fa-flag"></i> Open Reports</h2>
+                <div id="moderationMessage" class="form-message"></div>
+                <ul class="admin-list" id="moderationList">
+                    <li style="text-align:center;color:#8b949e;">Loading…</li>
+                </ul>
+            </div>
+        </section>
+    </main>
+
+    <div id="editChallengeModal" class="modal-overlay">
+        <div class="modal-card">
+            <h3><i class="fa-solid fa-pen-to-square"></i> Edit Challenge</h3>
+            <form id="adminEditForm">
+                <input type="hidden" name="id">
+                <div class="form-row full">
+                    <label>Title</label>
+                    <input name="title" maxlength="120" required>
+                </div>
+                <div class="form-row">
+                    <div>
+                        <label>Difficulty</label>
+                        <select name="difficulty">
+                            <option value="Easy">Easy</option>
+                            <option value="Medium">Medium</option>
+                            <option value="Hard">Hard</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>Points</label>
+                        <input name="points" type="number" min="10" max="1000" required>
+                    </div>
+                </div>
+                <div class="form-row full">
+                    <label>Description</label>
+                    <textarea name="description" maxlength="4000"></textarea>
+                </div>
+                <div class="form-row full">
+                    <label>Walkthrough</label>
+                    <textarea name="walkthrough" maxlength="4000"></textarea>
+                </div>
+                <div id="adminEditMessage" class="form-message"></div>
+                <div class="actions">
+                    <button type="button" class="btn btn-light" id="editCancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="banUserModal" class="modal-overlay">
+        <div class="modal-card">
+            <h3><i class="fa-solid fa-gavel"></i> Ban User</h3>
+            <p style="color:#8b949e;font-size:0.88rem;margin-bottom:0.8rem;">This will prevent the user from signing in. Their public content remains visible.</p>
+            <form id="banUserForm">
+                <input type="hidden" name="userId">
+                <div class="form-row full">
+                    <label>Reason (visible to user)</label>
+                    <textarea name="reason" required></textarea>
+                </div>
+                <div class="form-row full">
+                    <label>Duration (days; 0 = permanent)</label>
+                    <input name="days" type="number" min="0" value="0" required>
+                </div>
+                <div class="actions">
+                    <button type="button" class="btn btn-light" id="banCancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary" style="background:#f85149;border-color:#f85149;"><i class="fa-solid fa-gavel"></i> Ban</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script src="admin.js"></script>
+</body>
+</html>

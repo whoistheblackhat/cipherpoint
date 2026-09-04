@@ -1397,11 +1397,11 @@ def admin_list_users(
             base_query = base_query.filter(User.id == int(q_clean))
         else:
             # Strip SQL LIKE wildcards from user input to prevent unintended matches.
-            safe = q_clean.replace("\\", "\\\\").replace("%", "").replace("_", "")
+            safe = q_clean.replace("%", "").replace("_", "")
             like = f"%{safe.lower()}%"
             base_query = base_query.filter(
-                (func.lower(User.username).like(like, escape="\\")) |
-                (func.lower(User.email).like(like, escape="\\"))
+                (func.lower(User.username).like(like)) |
+                (func.lower(User.email).like(like))
             )
 
     total = base_query.count()

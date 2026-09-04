@@ -1,59 +1,191 @@
-==> Deploying...
-==> Setting WEB_CONCURRENCY=1 by default, based on available CPUs in the instance
-[2026-09-03 08:39:38 +0000] [7] [INFO] Starting gunicorn 21.2.0
-[2026-09-03 08:39:38 +0000] [7] [INFO] Listening at: http://0.0.0.0:10000 (7)
-[2026-09-03 08:39:38 +0000] [7] [INFO] Using worker: uvicorn.workers.UvicornWorker
-[2026-09-03 08:39:38 +0000] [26] [INFO] Booting worker with pid: 26
-[2026-09-03 08:39:42 +0000] [26] [INFO] Started server process [26]
-[2026-09-03 08:39:42 +0000] [26] [INFO] Waiting for application startup.
-==> Your service is live 🎉
-==> 
-==> ///////////////////////////////////////////////////////////
-==> 
-==> Available at your primary URL https://cipherpoint.linkpc.net + 1 more domain
-==> 
-==> ///////////////////////////////////////////////////////////
-Admin bot polling error: 409 Client Error: Conflict for url: https://api.telegram.org/bot8488934096:AAGiXmso-YGG3gQh6vnUYm8iZ2ct8fpkGQc/getUpdates?timeout=30&offset=0&allowed_updates=message&allowed_updates=callback_query
-10.24.209.135:0 - "GET /api/auth/me HTTP/1.1" 401
-10.24.209.135:0 - "GET /login.html HTTP/1.1" 200
-10.24.209.135:0 - "POST /api/auth/login HTTP/1.1" 200
-10.24.209.135:0 - "GET /dashboard.html HTTP/1.1" 200
-10.28.19.137:0 - "GET /api/auth/me HTTP/1.1" 200
-10.24.209.135:0 - "HEAD /healthz HTTP/1.1" 405
-10.24.209.135:0 - "GET /api/challenges HTTP/1.1" 200
-10.28.19.137:0 - "GET /api/challenges?limit=5 HTTP/1.1" 200
-10.28.19.137:0 - "GET /api/media/BAAC_test789 HTTP/1.1" 500
-10.24.209.135:0 - "GET /api/media/EXPIRY_0 HTTP/1.1" 500
-10.24.209.135:0 - "GET /api/media/EXPIRY_2 HTTP/1.1" 500
-10.28.19.137:0 - "GET /api/media/BAAC_test789 HTTP/1.1" 500
-Admin bot 409 Conflict: another instance is polling. Backing off 60s.
-10.24.209.135:0 - "GET /settings.html HTTP/1.1" 200
-10.31.63.130:0 - "GET /healthz HTTP/1.1" 200
-10.24.209.135:0 - "GET /api/auth/me HTTP/1.1" 200
-10.28.19.137:0 - "GET /api/profile HTTP/1.1" 200
-10.28.19.137:0 - "GET /profile.html HTTP/1.1" 200
-10.24.209.135:0 - "GET /api/auth/me HTTP/1.1" 200
-10.31.63.130:0 - "GET /api/profile HTTP/1.1" 200
-10.28.19.137:0 - "GET /profile.html HTTP/1.1" 200
-==> Detected service running on port 10000
-==> Docs on specifying a port: https://render.com/docs/web-services#port-binding
-10.24.209.135:0 - "GET /api/auth/me HTTP/1.1" 200
-10.28.19.137:0 - "GET /api/profile HTTP/1.1" 200
-10.28.19.137:0 - "GET /leaderboard.html HTTP/1.1" 200
-10.31.63.130:0 - "GET /api/auth/me HTTP/1.1" 200
-10.31.63.130:0 - "GET /api/auth/me HTTP/1.1" 200
-10.24.209.135:0 - "GET /api/leaderboard?limit=100 HTTP/1.1" 200
-Admin bot 409 Conflict: another instance is polling. Backing off 60s.
-10.28.19.137:0 - "GET /community.html HTTP/1.1" 200
-10.24.209.135:0 - "GET /api/auth/me HTTP/1.1" 200
-10.28.19.137:0 - "GET /api/challenges/community HTTP/1.1" 200
-10.24.209.135:0 - "GET /api/media/EXPIRY_2 HTTP/1.1" 500
-10.24.209.135:0 - "GET /api/media/EXPIRY_0 HTTP/1.1" 500
-10.31.63.130:0 - "GET /api/media/BAAC_test789 HTTP/1.1" 500
-10.28.19.137:0 - "GET /api/challenges/4/comments HTTP/1.1" 200
-10.24.209.135:0 - "GET /api/auth/me HTTP/1.1" 200
-10.31.63.130:0 - "GET /api/profile HTTP/1.1" 200
-10.24.209.135:0 - "GET /api/auth/me HTTP/1.1" 200
-10.31.63.130:0 - "GET /api/profile HTTP/1.1" 200
-Admin bot 409 Conflict: another instance is polling. Backing off 60s.
-Admin bot 409 Conflict: another instance is polling. Backing off 60s.
+10.24.219.136:0 - "GET /api/challenges?limit=200 HTTP/1.1" 200
+10.24.219.136:0 - "GET /api/moderation/reports HTTP/1.1" 200
+[cp-1788533977-ed82cd] unhandled exception on GET /api/admin/users: Param count mismatch: 1 placeholders, 2 params
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/errors.py", line 162, in __call__
+    await self.app(scope, receive, _send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/cors.py", line 84, in __call__
+    await self.app(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/exceptions.py", line 79, in __call__
+    raise exc
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/exceptions.py", line 68, in __call__
+    await self.app(scope, receive, sender)
+  File "/usr/local/lib/python3.11/site-packages/fastapi/middleware/asyncexitstack.py", line 21, in __call__
+    raise e
+  File "/usr/local/lib/python3.11/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 718, in __call__
+    await route.handle(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 66, in app
+    response = await func(request)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 237, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 165, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/starlette/concurrency.py", line 41, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/anyio/to_thread.py", line 65, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/anyio/_backends/_asyncio.py", line 2706, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/anyio/_backends/_asyncio.py", line 1100, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/main.py", line 1407, in admin_list_users
+    total = base_query.count()
+            ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/query.py", line 3153, in count
+    self._legacy_from_self(col).enable_eagerloads(False).scalar()
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/query.py", line 2842, in scalar
+    ret = self.one()
+          ^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/query.py", line 2815, in one
+    return self._iter().one()  # type: ignore
+           ^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/query.py", line 2864, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+                                                  ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2373, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2271, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
+    return meth(
+           ^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 2368, in _handle_dbapi_exception
+    raise exc_info[1].with_traceback(exc_info[2])
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "/app/turso_client.py", line 258, in execute
+    sql_text, _ = self._bind(sql, params)
+                  ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/turso_client.py", line 242, in _bind
+    raise TursoError(f"Param count mismatch: {param_idx} placeholders, {len(params)} params")
+turso_client.TursoError: Param count mismatch: 1 placeholders, 2 params
+10.24.142.130:0 - "GET /api/admin/users?q=shadow HTTP/1.1" 500
+[2026-09-04 14:59:37 +0000] [26] [ERROR] Exception in ASGI application
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/uvicorn/protocols/http/httptools_impl.py", line 436, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/uvicorn/middleware/proxy_headers.py", line 78, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/fastapi/applications.py", line 276, in __call__
+    await super().__call__(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/applications.py", line 122, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/errors.py", line 184, in __call__
+    raise exc
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/errors.py", line 162, in __call__
+    await self.app(scope, receive, _send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/cors.py", line 84, in __call__
+    await self.app(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/exceptions.py", line 79, in __call__
+    raise exc
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/exceptions.py", line 68, in __call__
+    await self.app(scope, receive, sender)
+  File "/usr/local/lib/python3.11/site-packages/fastapi/middleware/asyncexitstack.py", line 21, in __call__
+    raise e
+  File "/usr/local/lib/python3.11/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 718, in __call__
+    await route.handle(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 66, in app
+    response = await func(request)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 237, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 165, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/starlette/concurrency.py", line 41, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/anyio/to_thread.py", line 65, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/anyio/_backends/_asyncio.py", line 2706, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/anyio/_backends/_asyncio.py", line 1100, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/main.py", line 1407, in admin_list_users
+    total = base_query.count()
+            ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/query.py", line 3153, in count
+    self._legacy_from_self(col).enable_eagerloads(False).scalar()
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/query.py", line 2842, in scalar
+    ret = self.one()
+          ^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/query.py", line 2815, in one
+    return self._iter().one()  # type: ignore
+           ^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/query.py", line 2864, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+                                                  ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2373, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2271, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
+    return meth(
+           ^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 2368, in _handle_dbapi_exception
+    raise exc_info[1].with_traceback(exc_info[2])
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "/app/turso_client.py", line 258, in execute
+    sql_text, _ = self._bind(sql, params)
+                  ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/turso_client.py", line 242, in _bind
+    raise TursoError(f"Param count mismatch: {param_idx} placeholders, {len(params)} params")
+turso_client.TursoError: Param count mismatch: 1 placeholders, 2 params

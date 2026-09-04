@@ -64,6 +64,9 @@ class Challenge(Base):
     hint_1_cost = Column(Integer, default=10)  # Cost in coins
     hint_2 = Column(Text, nullable=True)
     hint_2_cost = Column(Integer, default=20)  # Cost in coins
+    # Walkthrough shown to users after they solve the challenge. Empty
+    # by default; admins / community authors can add a full step-by-step.
+    solution_walkthrough = Column(Text, nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     status = Column(String, default="approved", nullable=False)
     is_community = Column(Boolean, default=False, nullable=False)

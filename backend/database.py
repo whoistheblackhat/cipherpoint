@@ -112,6 +112,7 @@ def init_db():
             ("disclaimer_accepted", "BOOLEAN DEFAULT 0 NOT NULL"),
             ("tags", "VARCHAR DEFAULT ''"),
             ("report_count", "INTEGER DEFAULT 0 NOT NULL"),
+            ("solution_walkthrough", "TEXT"),
         ]:
             if not any(column[1] == column_name for column in challenge_columns):
                 conn.execute(text(f"ALTER TABLE challenges ADD COLUMN {column_name} {default_sql}"))

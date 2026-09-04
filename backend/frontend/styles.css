@@ -2697,6 +2697,26 @@ body[data-page="signup"] > canvas#networkCanvas {
   outline: none;
 }
 
+.search-clear {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.search-clear:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+.search-clear[hidden] {
+  display: none;
+}
+
 .challenge-shell {
   padding-top: 32px;
   padding-bottom: 50px;
@@ -3736,4 +3756,51 @@ body[data-page="signup"] > canvas#networkCanvas {
 }
 .media-download-btn i {
   font-size: 0.85rem;
+}
+
+/* Solution walkthrough box (visible only to solvers / author / admin) */
+.walkthrough-box {
+  margin: 1rem 0;
+  padding: 1rem 1.2rem;
+  background: linear-gradient(135deg, rgba(88, 166, 255, 0.08) 0%, rgba(63, 185, 80, 0.08) 100%);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  border-radius: 12px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  line-height: 1.6;
+}
+.walkthrough-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #58a6ff;
+  font-size: 0.95rem;
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(88, 166, 255, 0.2);
+}
+.walkthrough-header i {
+  font-size: 1.1rem;
+}
+.walkthrough-body {
+  color: #e6edf3;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+}
+
+.walkthrough-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: rgba(88, 166, 255, 0.12);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  border-radius: 999px;
+  color: #58a6ff;
+  font-size: 0.72rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.walkthrough-pill i {
+  font-size: 0.7rem;
 }

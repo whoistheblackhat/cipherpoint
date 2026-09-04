@@ -141,7 +141,6 @@ class HintRequest(BaseModel):
 class FlagSubmitRequest(BaseModel):
     challenge_id: int
     flag: str
-
 class ChallengeCreateRequest(BaseModel):
     title: str
     category: str
@@ -155,9 +154,11 @@ class ChallengeCreateRequest(BaseModel):
     hint_2: Optional[str] = None
     hint_2_cost: int = 20
     tags: Optional[str] = ""
+    solution_walkthrough: Optional[str] = None
 
     class Config:
         extra = "allow"
+
 
 class CommunityChallengeCreateRequest(BaseModel):
     title: str
@@ -173,6 +174,7 @@ class CommunityChallengeCreateRequest(BaseModel):
     hint_2_cost: int = 20
     disclaimer_accepted: bool = False
     tags: Optional[str] = ""
+    solution_walkthrough: Optional[str] = None
 
     class Config:
         extra = "allow"
@@ -189,6 +191,7 @@ CHALLENGE_FLAG_MAX = 200
 CHALLENGE_TELEGRAM_FILE_ID_MAX = 256
 CHALLENGE_TAGS_MAX = 200
 CHALLENGE_HINT_MAX = 1000
+CHALLENGE_WALKTHROUGH_MAX = 10000
 CHALLENGE_HINT_COST_MAX = 1000
 CHALLENGE_POINTS_MIN = 10
 CHALLENGE_POINTS_MAX = 1000
@@ -240,6 +243,7 @@ def _validate_community_payload(payload: CommunityChallengeCreateRequest):
         "tags": CHALLENGE_TAGS_MAX,
         "hint_1": CHALLENGE_HINT_MAX,
         "hint_2": CHALLENGE_HINT_MAX,
+        "solution_walkthrough": CHALLENGE_WALKTHROUGH_MAX,
     })
 
     if payload.difficulty not in ALLOWED_DIFFICULTIES:
@@ -1595,6 +1599,7 @@ def get_all_challenges(limit: Optional[int] = None, db: Session = Depends(get_db
             "is_community": bool(challenge.is_community),
             "created_by": challenge.created_by,
             "comments_count": comment_counts.get(challenge.id, 0),
+            "has_walkthrough": bool(challenge.solution_walkthrough),
             "created_at": challenge.created_at
         })
 
@@ -1634,16 +1639,54 @@ def get_community_challenges(db: Session = Depends(get_db)):
     return result
 
 @app.get("/api/challenges/{challenge_id}")
-def get_challenge_details(challenge_id: int, db: Session = Depends(get_db)):
-    """Get detailed view of a challenge (WITHOUT flag or hints)"""
+def get_challenge_details(
+    challenge_id: int,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db)
+):
+    """Get detailed view of a challenge (WITHOUT flag or hints).
+
+    Walkthrough is only returned to the user who solved the challenge,
+    the challenge author, or any admin. Anonymous users and other
+    users see `solution_walkthrough: null` so the answer is never
+    leaked before solve.
+    """
     challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
-    
+
     if not challenge or challenge.status in {"rejected", "removed"}:
         raise HTTPException(status_code=404, detail="Challenge not found")
-    
+
     solved_count = db.query(SolvedChallenge).filter(SolvedChallenge.challenge_id == challenge_id).count()
     comments_count = db.query(Comment).filter(Comment.challenge_id == challenge_id).count()
-    
+
+    # Walkthrough gating: only the author, an admin, or a user who has
+    # solved this challenge may see the walkthrough text.
+    viewer_id: Optional[int] = None
+    viewer_is_admin = False
+    if authorization:
+        try:
+            scheme, token = authorization.split()
+            if scheme.lower() == "bearer":
+                payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+                viewer_id = payload.get("sub")
+                if viewer_id is not None:
+                    viewer = db.query(User).filter(User.id == viewer_id).first()
+                    if viewer:
+                        viewer_is_admin = bool(getattr(viewer, "is_admin", False))
+        except Exception:
+            viewer_id = None
+
+    show_walkthrough = False
+    if viewer_id:
+        if viewer_is_admin or challenge.created_by == viewer_id:
+            show_walkthrough = True
+        else:
+            solved = db.query(SolvedChallenge).filter(
+                (SolvedChallenge.user_id == viewer_id) &
+                (SolvedChallenge.challenge_id == challenge_id)
+            ).first()
+            show_walkthrough = bool(solved)
+
     return {
         "id": challenge.id,
         "title": challenge.title,
@@ -1657,6 +1700,8 @@ def get_challenge_details(challenge_id: int, db: Session = Depends(get_db)):
         "hint_1_cost": challenge.hint_1_cost,
         "hint_2_cost": challenge.hint_2_cost,
         "tags": challenge.tags,
+        "solution_walkthrough": (challenge.solution_walkthrough or None) if show_walkthrough else None,
+        "can_view_walkthrough": show_walkthrough,
         "created_by": challenge.created_by,
         "is_community": bool(challenge.is_community),
         "status": challenge.status,
@@ -1693,6 +1738,7 @@ def create_challenge(
         hint_1_cost=payload.hint_1_cost,
         hint_2=(payload.hint_2 or "").strip() or None,
         hint_2_cost=payload.hint_2_cost,
+        solution_walkthrough=(payload.solution_walkthrough or "").strip() or None,
         created_by=user.id,
         status="approved",
         is_community=False,
@@ -1774,6 +1820,7 @@ def create_community_challenge(
         hint_1_cost=payload.hint_1_cost,
         hint_2=(payload.hint_2 or "").strip() or None,
         hint_2_cost=payload.hint_2_cost,
+        solution_walkthrough=(payload.solution_walkthrough or "").strip() or None,
         created_by=user_id,
         status="approved",
         is_community=True,
@@ -2046,6 +2093,7 @@ class ChallengeUpdateRequest(BaseModel):
     hint_2_cost: Optional[int] = None
     points_reward: Optional[int] = None
     tags: Optional[str] = None
+    solution_walkthrough: Optional[str] = None
 
 
 @app.put("/api/challenges/{challenge_id}")
@@ -2068,21 +2116,41 @@ def update_challenge(
         raise HTTPException(status_code=403, detail="Only the creator or an admin may edit this challenge")
 
     if payload.title is not None:
+        if len(payload.title) > CHALLENGE_TITLE_MAX:
+            raise HTTPException(status_code=400, detail=f"Title is too long (max {CHALLENGE_TITLE_MAX} characters).")
         challenge.title = payload.title.strip()
     if payload.description is not None:
+        if len(payload.description) > CHALLENGE_DESCRIPTION_MAX:
+            raise HTTPException(status_code=400, detail=f"Description is too long (max {CHALLENGE_DESCRIPTION_MAX} characters).")
         challenge.description = payload.description.strip()
     if payload.hint_1 is not None:
+        if len(payload.hint_1) > CHALLENGE_HINT_MAX:
+            raise HTTPException(status_code=400, detail=f"Hint 1 is too long (max {CHALLENGE_HINT_MAX} characters).")
         challenge.hint_1 = payload.hint_1.strip() or None
     if payload.hint_2 is not None:
+        if len(payload.hint_2) > CHALLENGE_HINT_MAX:
+            raise HTTPException(status_code=400, detail=f"Hint 2 is too long (max {CHALLENGE_HINT_MAX} characters).")
         challenge.hint_2 = payload.hint_2.strip() or None
     if payload.hint_1_cost is not None:
+        if payload.hint_1_cost < 0 or payload.hint_1_cost > CHALLENGE_HINT_COST_MAX:
+            raise HTTPException(status_code=400, detail="hint_1_cost must be 0-1000.")
         challenge.hint_1_cost = max(0, payload.hint_1_cost)
     if payload.hint_2_cost is not None:
+        if payload.hint_2_cost < 0 or payload.hint_2_cost > CHALLENGE_HINT_COST_MAX:
+            raise HTTPException(status_code=400, detail="hint_2_cost must be 0-1000.")
         challenge.hint_2_cost = max(0, payload.hint_2_cost)
     if payload.points_reward is not None:
-        challenge.points_reward = max(0, payload.points_reward)
+        if payload.points_reward < CHALLENGE_POINTS_MIN or payload.points_reward > CHALLENGE_POINTS_MAX:
+            raise HTTPException(status_code=400, detail=f"points_reward must be {CHALLENGE_POINTS_MIN}-{CHALLENGE_POINTS_MAX}.")
+        challenge.points_reward = payload.points_reward
     if payload.tags is not None:
+        if len(payload.tags) > CHALLENGE_TAGS_MAX:
+            raise HTTPException(status_code=400, detail=f"Tags are too long (max {CHALLENGE_TAGS_MAX} characters).")
         challenge.tags = payload.tags.strip()
+    if payload.solution_walkthrough is not None:
+        if len(payload.solution_walkthrough) > CHALLENGE_WALKTHROUGH_MAX:
+            raise HTTPException(status_code=400, detail=f"Walkthrough is too long (max {CHALLENGE_WALKTHROUGH_MAX} characters).")
+        challenge.solution_walkthrough = payload.solution_walkthrough.strip() or None
 
     db.commit()
     db.refresh(challenge)

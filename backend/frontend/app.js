@@ -559,7 +559,26 @@ function bindGlobalEvents() {
 
   const challengeSearch = safeGetById('challengeSearch');
   if (challengeSearch) {
-    challengeSearch.addEventListener('input', (event) => handleSearch(event.target.value));
+    // Debounced so we don't re-render on every keystroke
+    challengeSearch.addEventListener('input', (event) => {
+      clearTimeout(challengeSearch._debounce);
+      const value = event.target.value;
+      const clearBtn = safeGetById('challengeSearchClear');
+      if (clearBtn) clearBtn.hidden = value.length === 0;
+      challengeSearch._debounce = setTimeout(() => {
+        handleSearch(value);
+      }, 180);
+    });
+  }
+
+  const challengeSearchClear = safeGetById('challengeSearchClear');
+  if (challengeSearchClear && challengeSearch) {
+    challengeSearchClear.addEventListener('click', () => {
+      challengeSearch.value = '';
+      challengeSearchClear.hidden = true;
+      challengeSearch.focus();
+      handleSearch('');
+    });
   }
 
   const searchBox = safeGetById('searchBox');
@@ -2422,7 +2441,8 @@ async function handleCommunityChallengeSubmit(event) {
     hint_1: formData.get('hint_1')?.toString().trim() || '',
     hint_2: formData.get('hint_2')?.toString().trim() || '',
     disclaimer_accepted: !!formData.get('disclaimer_accepted'),
-    tags: formData.get('tags')?.toString().trim() || ''
+    tags: formData.get('tags')?.toString().trim() || '',
+    solution_walkthrough: formData.get('solution_walkthrough')?.toString() || ''
   };
 
   const messageBox = safeGetById('communityFormMessage');
@@ -2471,6 +2491,10 @@ async function handleCommunityChallengeSubmit(event) {
   }
   if (body.points_reward < 10 || body.points_reward > 1000) {
     setFormError('Reward must be between 10 and 1000 coins.');
+    return;
+  }
+  if (body.solution_walkthrough && body.solution_walkthrough.length > 10000) {
+    setFormError('Walkthrough must be 10000 characters or less.');
     return;
   }
   if (!body.correct_flag) {
@@ -2551,6 +2575,7 @@ function renderChallenges() {
             <span class="card-category-name">r/${escapeHtml(challenge.category || 'OSINT')}</span>
             <span class="card-time-ago">• ${challenge.created_at ? new Date(challenge.created_at).toLocaleDateString() : 'Today'}</span>
             <span class="card-category-badge">${escapeHtml(challenge.difficulty || 'Open')}</span>
+            ${challenge.has_walkthrough ? `<span class="walkthrough-pill" title="Author provided a solution walkthrough"><i class="fa-solid fa-lightbulb"></i> Walkthrough</span>` : ''}
           </div>
           <div class="card-meta-right">
             <a class="card-joined-pill" href="challenge_detail.html?id=${challenge.id}">
@@ -2633,6 +2658,26 @@ async function loadChallengeDetailPage(challengeId) {
     if (safeGetById('detailSolved')) safeGetById('detailSolved').textContent = `${challenge.solved_count || 0} Analysts`;
     if (safeGetById('detailCreated')) safeGetById('detailCreated').textContent = challenge.created_at ? new Date(challenge.created_at).toLocaleDateString() : 'Today';
     if (safeGetById('detailVotes')) safeGetById('detailVotes').textContent = challenge.points_reward || 100;
+
+    // Walkthrough (only rendered for solvers / author / admin)
+    const walkthroughEl = safeGetById('detailWalkthrough');
+    if (walkthroughEl) {
+      if (challenge.can_view_walkthrough && challenge.solution_walkthrough) {
+        walkthroughEl.innerHTML = `
+          <div class="walkthrough-box">
+            <div class="walkthrough-header">
+              <i class="fa-solid fa-lightbulb"></i>
+              <strong>Solution Walkthrough</strong>
+            </div>
+            <div class="walkthrough-body">${escapeHtml(challenge.solution_walkthrough)}</div>
+          </div>
+        `;
+        walkthroughEl.style.display = 'block';
+      } else {
+        walkthroughEl.innerHTML = '';
+        walkthroughEl.style.display = 'none';
+      }
+    }
 
     const detailHints = safeGetById('detailHints');
     if (detailHints) {
@@ -2864,6 +2909,16 @@ function renderChallengeModal(challenge) {
       <div class="modal-description">
         ${escapeHtml(challenge.description || '')}
       </div>
+
+      ${challenge.can_view_walkthrough && challenge.solution_walkthrough ? `
+        <div class="walkthrough-box">
+          <div class="walkthrough-header">
+            <i class="fa-solid fa-lightbulb"></i>
+            <strong>Solution Walkthrough</strong>
+          </div>
+          <div class="walkthrough-body">${escapeHtml(challenge.solution_walkthrough)}</div>
+        </div>
+      ` : ''}
 
       <div class="modal-meta-grid">
         <div class="modal-meta-card">
@@ -3335,6 +3390,41 @@ async function submitFlag(challengeId) {
   }
 }
 
+// Single source of truth for challenge list filtering. Both the
+// difficulty buttons and the search box read/write this state and
+// then call `applyChallengeFilters` to re-render.
+const challengeFilters = {
+  difficulty: 'all',
+  searchTerm: '',
+};
+
+
+function applyChallengeFilters() {
+  const term = (challengeFilters.searchTerm || '').trim().toLowerCase();
+  const difficulty = challengeFilters.difficulty || 'all';
+
+  filteredChallenges = allChallenges.filter((challenge) => {
+    if (difficulty !== 'all' && challenge.difficulty !== difficulty) {
+      return false;
+    }
+    if (!term) {
+      return true;
+    }
+    // Search across title, description, category and tags (tags is a
+    // comma-separated string in the DB).
+    const haystack = [
+      challenge.title || '',
+      challenge.description || '',
+      challenge.category || '',
+      challenge.tags || '',
+    ].join(' ').toLowerCase();
+    return haystack.includes(term);
+  });
+
+  renderChallenges();
+}
+
+
 function filterChallenges(difficulty = 'all') {
   const normalized = difficulty || 'all';
   const filterButtons = document.querySelectorAll('.filter-btn');
@@ -3342,23 +3432,14 @@ function filterChallenges(difficulty = 'all') {
     button.classList.toggle('active', (button.dataset.filter || 'all') === normalized);
   });
 
-  filteredChallenges = normalized === 'all'
-    ? [...allChallenges]
-    : allChallenges.filter((challenge) => challenge.difficulty === normalized);
-
-  renderChallenges();
+  challengeFilters.difficulty = normalized;
+  applyChallengeFilters();
 }
 
+
 function handleSearch(query) {
-  const term = (query || '').toLowerCase();
-
-  filteredChallenges = allChallenges.filter((challenge) => {
-    return challenge.title.toLowerCase().includes(term)
-      || challenge.description.toLowerCase().includes(term)
-      || challenge.category.toLowerCase().includes(term);
-  });
-
-  renderChallenges();
+  challengeFilters.searchTerm = (query || '').trim();
+  applyChallengeFilters();
 }
 
 function loadLeaderboard() {

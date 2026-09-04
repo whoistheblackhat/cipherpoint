@@ -105,6 +105,11 @@
     const msg = $('adminCreateMessage');
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (form.dataset.busy === '1') return;  // double-submit guard
+      form.dataset.busy = '1';
+      const submitBtn = form.querySelector('button[type="submit"]');
+      const originalLabel = submitBtn ? submitBtn.innerHTML : '';
+      if (submitBtn) { submitBtn.disabled = true; }
       hideMessage(msg);
       const fd = new FormData(form);
       const payload = {
@@ -123,6 +128,8 @@
 
       if (!payload.title || !payload.description || !payload.correct_flag) {
         showMessage(msg, 'Title, description, and flag are required.', 'error');
+        form.dataset.busy = '';
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalLabel; }
         return;
       }
       showMessage(msg, 'Creating…', 'info');
@@ -138,6 +145,8 @@
       } else {
         showMessage(msg, (res.data && res.data.detail) || 'Failed to create challenge', 'error');
       }
+      form.dataset.busy = '';
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalLabel; }
     });
   }
 
@@ -216,6 +225,11 @@
 
     editForm.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (editForm.dataset.busy === '1') return;  // double-submit guard
+      editForm.dataset.busy = '1';
+      const saveBtn = editForm.querySelector('button[type="submit"]');
+      const originalLabel = saveBtn ? saveBtn.innerHTML : '';
+      if (saveBtn) { saveBtn.disabled = true; }
       editMsg.className = 'form-message';
       editMsg.textContent = '';
       const fd = new FormData(editForm);
@@ -239,6 +253,8 @@
       } else {
         showMessage(editMsg, (res.data && res.data.detail) || 'Save failed', 'error');
       }
+      editForm.dataset.busy = '';
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = originalLabel; }
     });
   }
 

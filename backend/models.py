@@ -138,9 +138,17 @@ class UserBan(Base):
     reason = Column(Text, nullable=False)
     banned_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)  # NULL = permanent ban
 
     user = relationship("User", back_populates="bans", foreign_keys=[user_id])
     banner = relationship("User", foreign_keys=[banned_by])
+
+    @property
+    def is_active(self) -> bool:
+        """A ban is active if it has no expiry OR its expiry is in the future."""
+        if self.expires_at is None:
+            return True
+        return self.expires_at > datetime.utcnow()
 
 
 class Comment(Base):

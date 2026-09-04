@@ -673,12 +673,53 @@ function bindGlobalEvents() {
   });
 }
 
+function injectConditionalSidebarLinks() {
+  // Idempotent — only inject once per page.
+  if (document.body.dataset.sidebarEnhanced === '1') return;
+  const nav = document.querySelector('aside .sidebar-nav, nav.sidebar-nav, .sidebar nav');
+  if (!nav) return;
+  document.body.dataset.sidebarEnhanced = '1';
+
+  // Always show "Notifications" to signed-in users.
+  if (currentUser && !document.getElementById('sidebarNotificationsLink')) {
+    const a = document.createElement('a');
+    a.id = 'sidebarNotificationsLink';
+    a.href = 'notifications.html';
+    a.className = 'sidebar-link';
+    a.innerHTML = '<i class="fa-solid fa-bell"></i><span>Notifications</span>';
+    nav.appendChild(a);
+  }
+
+  // Admin-only link.
+  if (currentUser && currentUser.is_admin && !document.getElementById('sidebarAdminLink')) {
+    const a = document.createElement('a');
+    a.id = 'sidebarAdminLink';
+    a.href = 'admin.html';
+    a.className = 'sidebar-link';
+    a.innerHTML = '<i class="fa-solid fa-user-shield"></i><span>Admin Console</span>';
+    nav.appendChild(a);
+  }
+}
+
 function setUserDisplayState() {
   const authButton = safeGetById('authBtn');
   if (authButton) {
     authButton.textContent = currentUser ? `Logout (${currentUser.username})` : 'Sign In';
     authButton.classList.toggle('logout', Boolean(currentUser));
   }
+
+  // Inject conditional sidebar links (admin / notifications) on every page.
+  injectConditionalSidebarLinks();
+  // Show / hide the admin link on the dashboard topbar too.
+  document.querySelectorAll('[data-show-if="admin"]').forEach((el) => {
+    el.style.display = (currentUser && currentUser.is_admin) ? '' : 'none';
+  });
+  document.querySelectorAll('[data-show-if="authed"]').forEach((el) => {
+    el.style.display = currentUser ? '' : 'none';
+  });
+  document.querySelectorAll('[data-show-if="anon"]').forEach((el) => {
+    el.style.display = currentUser ? 'none' : '';
+  });
 
   const coinValue = safeGetById('coinValue');
   const rankValue = safeGetById('rankValue');

@@ -127,6 +127,10 @@ def init_db():
         if report_columns and not any(column[1] == "target_type" for column in report_columns):
             conn.execute(text("ALTER TABLE challenge_reports ADD COLUMN target_type VARCHAR DEFAULT 'challenge' NOT NULL"))
 
+        ban_columns = conn.execute(text("PRAGMA table_info(user_bans)")).fetchall()
+        if ban_columns and not any(column[1] == "expires_at" for column in ban_columns):
+            conn.execute(text("ALTER TABLE user_bans ADD COLUMN expires_at DATETIME"))
+
         conn.execute(text(
             "DELETE FROM unlocked_hints WHERE rowid NOT IN ("
             "SELECT MIN(rowid) FROM unlocked_hints GROUP BY user_id, challenge_id, hint_number)"

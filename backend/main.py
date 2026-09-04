@@ -22,6 +22,7 @@ import tempfile
 import shutil
 import threading
 import time
+import traceback
 import requests
 import hmac
 from dotenv import load_dotenv
@@ -110,10 +111,12 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         return FileResponse(os.path.join(FRONTEND_DIR, "404.html"), status_code=404)
     if exc.status_code in (500, 503) and _wants_html(request):
         return FileResponse(os.path.join(FRONTEND_DIR, "500.html"), status_code=exc.status_code)
+    # Only pass headers if the exception actually carries any (JSONResponse defaults to None).
+    response_headers = exc.headers if exc.headers else None
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": exc.detail},
-        headers=exc.headers or None,
+        headers=response_headers,
     )
 
 
@@ -124,7 +127,6 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     Logs to the server console (visible in Render logs) and either returns
     a JSON 500 for API callers or renders the branded 500 page for browsers.
     """
-    import traceback
     trace_id = f"cp-{int(time.time())}-{secrets.token_hex(3)}"
     print(f"[{trace_id}] unhandled exception on {request.method} {request.url.path}: {exc}")
     print(traceback.format_exc())
@@ -619,6 +621,7 @@ from security import (
     constant_time_eq,
     LOGIN_MAX_ATTEMPTS,
     LOGIN_LOCKOUT_MINUTES,
+    COMMON_PASSWORDS,
 )
 
 def create_access_token(data: dict):
@@ -665,8 +668,16 @@ def get_current_admin_user(user_id: int = Depends(verify_token), db: Session = D
 
 
 def ensure_user_not_banned(user_id: int, db: Session):
-    if db.query(UserBan).filter(UserBan.user_id == user_id).first():
-        raise HTTPException(status_code=403, detail="Your account has been suspended.")
+    """Raise 403 if the user has an *active* ban. Expired bans are auto-lifted."""
+    ban = db.query(UserBan).filter(UserBan.user_id == user_id).first()
+    if not ban:
+        return
+    if ban.expires_at is not None and ban.expires_at <= datetime.utcnow():
+        # Auto-lift expired ban so the user can sign in again.
+        db.delete(ban)
+        db.commit()
+        return
+    raise HTTPException(status_code=403, detail="Your account has been suspended.")
 
 
 class CommentCreateRequest(BaseModel):
@@ -1329,16 +1340,27 @@ def emergency_reset_password(payload: EmergencyResetRequest, db: Session = Depen
     if not hmac.compare_digest(payload.master_key, expected):
         # Generic message to avoid leaking whether the key is set
         raise HTTPException(status_code=403, detail="Invalid master key")
-    if len(payload.new_password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    # Use the same strength policy as the user-facing password change flow
+    # so an emergency reset can't be used to lock an account behind a weak password.
+    if not isinstance(payload.new_password, str) or len(payload.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    if not re.search(r"[A-Za-z]", payload.new_password) or not re.search(r"\d", payload.new_password):
+        raise HTTPException(status_code=400, detail="Password must contain both a letter and a digit")
+    if payload.new_password.lower() in COMMON_PASSWORDS:
+        raise HTTPException(status_code=400, detail="Password is too common — choose a different one")
 
-    user = db.query(User).filter(User.username == payload.username.strip()).first()
+    # Constant-time-ish lookup: query both fields, pick whichever matched.
+    username_clean = payload.username.strip()
+    user = db.query(User).filter(User.username == username_clean).first()
     if not user:
-        user = db.query(User).filter(User.email == payload.username.strip().lower()).first()
+        user = db.query(User).filter(User.email == username_clean.lower()).first()
     if not user:
+        # Same 404 message regardless of which field was probed.
         raise HTTPException(status_code=404, detail="User not found")
 
     user.password_hash = hash_password(payload.new_password)
+    user.reset_token = None
+    user.reset_token_expires = None
     db.commit()
     return {"message": f"Password reset for {user.username}", "username": user.username}
 
@@ -1370,13 +1392,16 @@ def admin_list_users(
 
     base_query = db.query(User)
     if q:
-        q_clean = q.strip()
+        q_clean = q.strip()[:64]  # cap to prevent abuse
         if q_clean.isdigit():
             base_query = base_query.filter(User.id == int(q_clean))
         else:
-            like = f"%{q_clean.lower()}%"
+            # Strip SQL LIKE wildcards from user input to prevent unintended matches.
+            safe = q_clean.replace("\\", "\\\\").replace("%", "").replace("_", "")
+            like = f"%{safe.lower()}%"
             base_query = base_query.filter(
-                (func.lower(User.username).like(like)) | (func.lower(User.email).like(like))
+                (func.lower(User.username).like(like, escape="\\")) |
+                (func.lower(User.email).like(like, escape="\\"))
             )
 
     total = base_query.count()
@@ -1388,11 +1413,13 @@ def admin_list_users(
         .all()
     )
 
-    # Build a set of banned user IDs in a single query (avoids N+1)
+    # Build a set of *active* banned user IDs. Scoped to the returned user IDs
+    # so we don't load the whole ban table on a 100k-user install.
+    result_ids = [u.id for u in users]
     banned_ids = {
         row.user_id
-        for row in db.query(UserBan.user_id).all()
-    }
+        for row in db.query(UserBan.user_id).filter(UserBan.user_id.in_(result_ids)).all()
+    } if result_ids else set()
 
     items = []
     for u in users:
@@ -1405,6 +1432,7 @@ def admin_list_users(
             "coins": u.coins or 0,
             "rank_points": u.rank_points or 0,
             "created_at": u.created_at.isoformat() if u.created_at else None,
+            "is_active": u.id not in banned_ids,
         })
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
@@ -1422,6 +1450,10 @@ def admin_ban_user(
     extends the ban window. The target user is notified via Telegram if
     their chat_id is linked.
     """
+    if not isinstance(payload.user_id, int) or payload.user_id <= 0:
+        raise HTTPException(status_code=400, detail="Invalid user_id")
+    if not isinstance(payload.days, int) or payload.days < 0 or payload.days > 3650:
+        raise HTTPException(status_code=400, detail="Invalid days (0..3650)")
     reason = (payload.reason or "").strip()
     if not reason:
         raise HTTPException(status_code=400, detail="Ban reason is required")
@@ -1438,23 +1470,21 @@ def admin_ban_user(
 
     existing = db.query(UserBan).filter(UserBan.user_id == target.id).first()
     expires_at = None
-    if payload.days and payload.days > 0:
-        expires_at = datetime.utcnow() + timedelta(days=int(payload.days))
+    if payload.days > 0:
+        expires_at = datetime.utcnow() + timedelta(days=payload.days)
 
     if existing:
         existing.reason = reason
         existing.banned_by = admin_user.id
-        existing.banned_at = datetime.utcnow()
-        if hasattr(existing, "expires_at"):
-            existing.expires_at = expires_at
+        existing.created_at = datetime.utcnow()
+        existing.expires_at = expires_at
     else:
         ban = UserBan(
             user_id=target.id,
             reason=reason,
             banned_by=admin_user.id,
+            expires_at=expires_at,
         )
-        if hasattr(ban, "expires_at"):
-            ban.expires_at = expires_at
         db.add(ban)
 
     db.commit()

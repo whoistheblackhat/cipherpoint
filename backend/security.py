@@ -80,16 +80,19 @@ def password_strength_errors(password: str) -> list[str]:
         errors.append("Password must contain at least one letter")
     if not re.search(r"\d", password):
         errors.append("Password must contain at least one digit")
-    # Reject the most common weak passwords outright.
-    COMMON = {
-        "password", "password1", "password123", "12345678", "123456789",
-        "qwerty", "qwerty123", "letmein", "iloveyou", "admin123",
-        "welcome", "monkey", "dragon", "11111111", "00000000",
-        "abc123", "123abc", "passw0rd",
-    }
-    if password.lower() in COMMON:
+    if password.lower() in COMMON_PASSWORDS:
         errors.append("Password is too common")
     return errors
+
+
+# Exposed for the admin emergency-reset flow (so the strength policy is enforced
+# everywhere a new password is set, not just on signup / change-password).
+COMMON_PASSWORDS = {
+    "password", "password1", "password123", "12345678", "123456789",
+    "qwerty", "qwerty123", "letmein", "iloveyou", "admin123",
+    "welcome", "monkey", "dragon", "11111111", "00000000",
+    "abc123", "123abc", "passw0rd",
+}
 
 
 # ----------------------------------------------------------------------

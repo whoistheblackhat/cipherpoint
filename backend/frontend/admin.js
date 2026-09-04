@@ -31,29 +31,42 @@
   }
 
   async function init() {
-    // Always verify admin status with the server — localStorage can be stale
-    // (older tokens don't carry the is_admin field).
+    // Diagnostic: log what we see so the user can debug in console.
+    console.log('[admin] init start');
+    console.log('[admin] token length:', token().length);
+    const storedUser = user();
+    console.log('[admin] stored user:', storedUser);
+
+    // Gate 1: must have a token.
     if (!token()) {
+      console.log('[admin] no token → gate');
       $('adminGate').style.display = 'block';
       $('adminApp').style.display = 'none';
       return;
     }
 
-    let u = user();
-    if (!u || typeof u.is_admin !== 'boolean') {
-      // Refresh from /api/auth/me so we have the authoritative is_admin flag.
-      const res = await authedFetch('/auth/me');
-      if (res.ok) {
-        u = Object.assign({}, u || {}, res.data);
-        try { localStorage.setItem('user', JSON.stringify(u)); } catch {}
-      }
+    // Gate 2: always verify with the server. localStorage can be stale or
+    // populated by an older version of the app that didn't set is_admin.
+    let u = storedUser;
+    console.log('[admin] fetching /api/auth/me...');
+    const me = await authedFetch('/auth/me');
+    console.log('[admin] /api/auth/me status:', me.status, 'ok:', me.ok);
+    if (me.ok) {
+      u = Object.assign({}, u || {}, me.data);
+      try { localStorage.setItem('user', JSON.stringify(u)); } catch {}
+      console.log('[admin] refreshed user from server:', u);
+    } else {
+      console.log('[admin] /api/auth/me failed, falling back to stored user');
     }
 
     if (!u || !u.is_admin) {
+      console.log('[admin] not admin → gate. u:', u);
       $('adminGate').style.display = 'block';
       $('adminApp').style.display = 'none';
       return;
     }
+
+    console.log('[admin] admin verified → showing panel');
     $('adminGate').style.display = 'none';
     $('adminApp').style.display = 'block';
     $('adminUsername').textContent = u.username || ('user#' + u.id);
@@ -424,8 +437,10 @@
   function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', () => {
+      try { init(); } catch (err) { console.error('[admin] init crashed:', err); }
+    });
   } else {
-    init();
+    try { init(); } catch (err) { console.error('[admin] init crashed:', err); }
   }
 })();

@@ -1815,7 +1815,8 @@ async function loadTelegramStatus() {
   }
 
   statusEl.className = 'telegram-status connected';
-  statusEl.innerHTML = `<div class="status-row"><i class="fa-solid fa-circle-check"></i> Connected to Telegram</div><div style="font-size:0.82rem;margin-top:6px;color:var(--muted);">Chat ID: ${currentUser.telegram_chat_id}</div>`;
+  const safeChatId = escapeHtml(String(currentUser.telegram_chat_id || ''));
+  statusEl.innerHTML = `<div class="status-row"><i class="fa-solid fa-circle-check"></i> Connected to Telegram</div><div style="font-size:0.82rem;margin-top:6px;color:var(--muted);">Chat ID: ${safeChatId}</div>`;
   if (connectBtn) connectBtn.style.display = 'none';
   if (disconnectBtn) disconnectBtn.style.display = 'block';
 }

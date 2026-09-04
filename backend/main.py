@@ -757,6 +757,7 @@ def list_comments(challenge_id: int, db: Session = Depends(get_db)):
 def create_comment(
     challenge_id: int,
     payload: CommentCreateRequest,
+    request: Request,
     user_id: int = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
@@ -765,6 +766,15 @@ def create_comment(
     challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found")
+
+    ip = request.client.host if request.client else "unknown"
+    allowed, retry = rate_limit_check(f"comment_user:{user_id}", max_events=10, window_seconds=60)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many comments. Please wait {retry}s.",
+            headers={"Retry-After": str(retry)},
+        )
 
     body = (payload.body or "").strip()
     if not body:

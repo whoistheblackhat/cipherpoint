@@ -307,31 +307,34 @@
                             <label>Description</label>
                             <textarea name="description" maxlength="4000" required></textarea>
                             <div class="hint">The intel brief. Up to 4000 characters.</div>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div>
-                            <label>Flag</label>
-                            <input name="flag" maxlength="200" required style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">
-                            <div class="hint">The exact flag value, no leading/trailing spaces.</div>
-                        </div>
-                        <div>
-                            <label>Walkthrough (visible to solvers)</label>
-                            <textarea name="walkthrough" maxlength="4000"></textarea>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div>
-                            <label>Telegram file_id (optional)</label>
-                            <input name="telegram_file_id" maxlength="256" placeholder="BAACAgIAAxk...">
-                            <div class="hint">If your image is already in the channel, paste the file_id.</div>
-                        </div>
-                        <div>
-                            <label>Tags (comma-separated)</label>
-                            <input name="tags" maxlength="200" placeholder="exif, geoint, satellite">
-                        </div>
-                    </div>
-                    <div id="adminCreateMessage" class="form-message"></div>
+                         </div>
+                     </div>
+                     <div class="form-row">
+                         <div>
+                             <label>Media Upload (Image/Video — optional)</label>
+                             <input type="file" id="adminMedia" name="media" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,video/quicktime">
+                             <div class="hint">Upload to Telegram channel. Max 10 MB image / 50 MB video.</div>
+                             <input type="hidden" id="adminFileId" name="telegram_file_id" value="">
+                         </div>
+                     </div>
+                     <div class="form-row">
+                         <div>
+                             <label>Flag</label>
+                             <input name="flag" maxlength="200" required style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">
+                             <div class="hint">The exact flag value, no leading/trailing spaces.</div>
+                         </div>
+                         <div>
+                             <label>Walkthrough (visible to solvers)</label>
+                             <textarea name="walkthrough" maxlength="4000"></textarea>
+                         </div>
+                      </div>
+                     <div class="form-row">
+                         <div>
+                             <label>Tags (comma-separated)</label>
+                             <input name="tags" maxlength="200" placeholder="exif, geoint, satellite">
+                         </div>
+                     </div>
+                     <div id="adminCreateMessage" class="form-message"></div>
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Create Challenge</button>
                         <button type="reset" class="btn btn-light"><i class="fa-solid fa-rotate-left"></i> Reset</button>

@@ -18,6 +18,37 @@
     el.textContent = '';
   }
 
+  function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    toast.style.cssText = 'position:fixed;bottom:24px;right:24px;padding:12px 18px;border-radius:8px;color:#fff;font-size:0.9rem;z-index:9999;max-width:90vw;word-break:break-word;';
+    if (type === 'success') toast.style.background = '#3fb950';
+    else if (type === 'error') toast.style.background = '#f85149';
+    else toast.style.background = '#58a6ff';
+    document.body.appendChild(toast);
+    setTimeout(() => { toast.remove(); }, 3000);
+  }
+
+  async function uploadMediaFile(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await fetch(`${API_BASE}/upload/media`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token()}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (res.ok && data.file_id) return data.file_id;
+      console.error('upload failed:', data);
+      return null;
+    } catch (err) {
+      console.error('upload error:', err);
+      return null;
+    }
+  }
+
   async function authedFetch(path, options = {}) {
     const headers = Object.assign(
       { 'Content-Type': 'application/json' },
@@ -25,6 +56,14 @@
       token() ? { Authorization: `Bearer ${token()}` } : {}
     );
     const res = await fetch(API_BASE + path, Object.assign({}, options, { headers }));
+    if (res.status === 401) {
+      try {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      } catch {}
+      window.location.href = 'login.html';
+      return { ok: false, status: 401, data: { detail: 'Session expired' } };
+    }
     let data = null;
     try { data = await res.json(); } catch { /* non-JSON */ }
     return { ok: res.ok, status: res.status, data };
@@ -133,6 +172,48 @@
   function setupCreate() {
     const form = $('adminCreateForm');
     const msg = $('adminCreateMessage');
+    const fileInput = $('adminMedia');
+    const fileIdInput = $('adminFileId');
+
+    // Handle file selection → upload to Telegram → store file_id
+    if (fileInput) {
+      fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Clear stale file_id when user picks a new file
+        if (fileIdInput) fileIdInput.value = '';
+
+        const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm', 'video/quicktime'];
+        if (!allowed.includes(file.type)) {
+          showToast('❌ Unsupported file type', 'error');
+          e.target.value = '';
+          return;
+        }
+        const maxSize = file.type.startsWith('video') ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+        if (file.size > maxSize) {
+          showToast(`❌ File too large (max ${Math.round(maxSize / (1024 * 1024))}MB)`, 'error');
+          e.target.value = '';
+          return;
+        }
+        if (file.size === 0) {
+          showToast('❌ File is empty', 'error');
+          e.target.value = '';
+          return;
+        }
+
+        showMessage(msg, 'Uploading media…', 'info');
+        const fileId = await uploadMediaFile(file);
+        if (fileId) {
+          if (fileIdInput) fileIdInput.value = fileId;
+          showMessage(msg, '✅ Media uploaded', 'success');
+        } else {
+          if (fileIdInput) fileIdInput.value = '';
+          showMessage(msg, 'Media upload failed', 'error');
+        }
+      });
+    }
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (form.dataset.busy === '1') return;  // double-submit guard
@@ -148,7 +229,7 @@
         difficulty: (fd.get('difficulty') || 'Medium').toString(),
         description: (fd.get('description') || '').toString().trim(),
         correct_flag: (fd.get('flag') || '').toString().trim(),
-        telegram_file_id: (fd.get('telegram_file_id') || '').toString().trim(),
+        telegram_file_id: (fd.get('telegram_file_id') || fileIdInput?.value || '').toString().trim(),
         points_reward: parseInt(fd.get('points') || '100', 10),
         hint_1: '',
         hint_1_cost: 10,

@@ -104,8 +104,8 @@ def _get_bot_token_for_file(file_id: str) -> str:
 def get_bot_health() -> dict:
     """Public health snapshot for /api/admin/bot-health or /status."""
     out = {}
-    for t in TELEGRAM_BOT_TOKENS:
-        out[t[:12] + "..."] = {
+    for idx, t in enumerate(TELEGRAM_BOT_TOKENS):
+        out[f"bot-{idx+1}"] = {
             "available": _is_bot_available(t),
             "failures": _BOT_FAILURE_COUNT.get(t, 0),
             "circuit_open_until": _BOT_CIRCUIT_OPEN_UNTIL.get(t)

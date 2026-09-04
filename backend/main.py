@@ -164,6 +164,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Security headers middleware — clickjacking, MIME sniffing, HSTS, etc.
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    # Relaxed CSP to allow CDN assets (fonts, icons) while still blocking inline scripts.
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://cdnjs.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
+        "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
+        "img-src 'self' data: https://cdnjs.cloudflare.com; "
+        "connect-src 'self' https://api.telegram.org https://challenges.cloudflare.com; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
+    if IS_PRODUCTION:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+    return response
+
 # Force HTTPS in production. Render already terminates TLS for us, but
 # this guards against accidental HTTP-only deploys.
 if IS_PRODUCTION:
@@ -2679,7 +2703,7 @@ async def upload_media(
             file.content_type,
         )
 
-        return {
+        result = {
             "success": True,
             "file_id": upload_result["file_id"],
             "filename": file.filename,
@@ -2687,6 +2711,9 @@ async def upload_media(
             "served_by_bot": upload_result.get("bot_token"),
             "message": "Media uploaded to Telegram successfully"
         }
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        return result
 
     except HTTPException:
         raise

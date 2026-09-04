@@ -2829,6 +2829,7 @@ if os.path.isdir(FRONTEND_DIR):
 
     # Keep deploy-sensitive assets revalidating so clients receive frontend fixes.
     @app.get("/app.js", include_in_schema=False)
+    @app.get("/admin.js", include_in_schema=False)
     @app.get("/styles.css", include_in_schema=False)
     async def serve_static_asset(request: Request):
         filename = request.url.path.lstrip("/")

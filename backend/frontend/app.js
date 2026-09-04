@@ -1542,9 +1542,27 @@ async function openEditModal(challengeId) {
             <input type="text" value="${escapeHtml(challenge.category || '')}" disabled>
           </label>
         </div>
+        <div class="field-grid">
+          <label>
+            <span>Difficulty</span>
+            <select id="editDifficulty">
+              <option value="Easy" ${challenge.difficulty === 'Easy' ? 'selected' : ''}>Easy</option>
+              <option value="Medium" ${challenge.difficulty === 'Medium' ? 'selected' : ''}>Medium</option>
+              <option value="Hard" ${challenge.difficulty === 'Hard' ? 'selected' : ''}>Hard</option>
+            </select>
+          </label>
+          <label>
+            <span>Reward Coins</span>
+            <input type="number" id="editReward" value="${challenge.points_reward || 100}" min="0">
+          </label>
+        </div>
         <label>
           <span>Description</span>
           <textarea id="editDescription" rows="4" required>${escapeHtml(challenge.description || '')}</textarea>
+        </label>
+        <label>
+          <span>Walkthrough / Solution</span>
+          <textarea id="editWalkthrough" rows="5" maxlength="4000">${escapeHtml(challenge.solution_walkthrough || '')}</textarea>
         </label>
         <div class="field-grid">
           <label>
@@ -1566,16 +1584,16 @@ async function openEditModal(challengeId) {
             <input type="number" id="editHint2Cost" value="${challenge.hint_2_cost || 20}" min="0">
           </label>
         </div>
-        <div class="field-grid">
-          <label>
-            <span>Reward Coins</span>
-            <input type="number" id="editReward" value="${challenge.points_reward || 100}" min="0">
-          </label>
-          <label>
-            <span>Tags</span>
-            <input type="text" id="editTags" value="${escapeHtml(challenge.tags || '')}">
-          </label>
-        </div>
+        <label>
+          <span>Tags</span>
+          <input type="text" id="editTags" value="${escapeHtml(challenge.tags || '')}">
+        </label>
+        <label>
+          <span>Media (Image/Video — optional)</span>
+          <input type="file" id="editMedia" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,video/quicktime">
+          <input type="hidden" id="editFileId" value="${escapeHtml(challenge.telegram_file_id || '')}">
+          <span style="font-size:0.8rem;color:var(--muted);">Upload a new file to replace the current media. Leave empty to keep existing.</span>
+        </label>
         <button type="submit" class="btn btn-primary btn-block">Save Changes</button>
       </form>
     `;
@@ -1585,6 +1603,37 @@ async function openEditModal(challengeId) {
       form.addEventListener('submit', submitEditChallenge);
     } else {
       console.error('[EDIT] Form not found');
+    }
+
+    const fileInput = safeGetById('editMedia');
+    const fileIdInput = safeGetById('editFileId');
+    if (fileInput) {
+      fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (fileIdInput) fileIdInput.value = '';
+        const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm', 'video/quicktime'];
+        if (!allowed.includes(file.type)) {
+          showToast('❌ Unsupported file type', 'error');
+          e.target.value = '';
+          return;
+        }
+        const maxSize = file.type.startsWith('video') ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+        if (file.size > maxSize) {
+          showToast(`❌ File too large (max ${Math.round(maxSize / (1024 * 1024))}MB)`, 'error');
+          e.target.value = '';
+          return;
+        }
+        showToast('Uploading media…', 'info');
+        const fileId = await uploadMediaFile(file);
+        if (fileId) {
+          if (fileIdInput) fileIdInput.value = fileId;
+          showToast('✅ Media uploaded', 'success');
+        } else {
+          if (fileIdInput) fileIdInput.value = '';
+          showToast('Media upload failed', 'error');
+        }
+      });
     }
 
     const modal = safeGetById('editModal');
@@ -1623,6 +1672,9 @@ async function submitEditChallenge(event) {
     hint_2_cost: Number(safeGetById('editHint2Cost')?.value || 0),
     points_reward: Number(safeGetById('editReward')?.value || 0),
     tags: safeGetById('editTags')?.value,
+    difficulty: safeGetById('editDifficulty')?.value,
+    solution_walkthrough: safeGetById('editWalkthrough')?.value,
+    telegram_file_id: safeGetById('editFileId')?.value,
   };
   console.log('[EDIT] Payload:', payload);
 

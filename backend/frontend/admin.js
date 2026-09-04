@@ -320,6 +320,8 @@
         editForm.elements['points'].value = ch.points_reward || ch.points || 100;
         editForm.elements['description'].value = ch.description || '';
         editForm.elements['walkthrough'].value = ch.solution_walkthrough || ch.walkthrough || '';
+        const editFileIdInput = document.getElementById('adminEditFileId');
+        if (editFileIdInput) editFileIdInput.value = ch.telegram_file_id || '';
         modal.classList.add('show');
       } else if (btn.dataset.action === 'delete') {
         const title = btn.dataset.title || ('challenge #' + id);
@@ -350,7 +352,13 @@
         difficulty: (fd.get('difficulty') || 'Medium').toString(),
         points_reward: parseInt(fd.get('points') || '100', 10),
         description: (fd.get('description') || '').toString().trim(),
-        solution_walkthrough: (fd.get('walkthrough') || '').toString().trim()
+        solution_walkthrough: (fd.get('walkthrough') || '').toString().trim(),
+        hint_1: (fd.get('hint_1') || '').toString().trim() || null,
+        hint_2: (fd.get('hint_2') || '').toString().trim() || null,
+        hint_1_cost: parseInt(fd.get('hint_1_cost') || '0', 10),
+        hint_2_cost: parseInt(fd.get('hint_2_cost') || '0', 10),
+        tags: (fd.get('tags') || '').toString().trim() || null,
+        telegram_file_id: (fd.get('telegram_file_id') || document.getElementById('adminEditFileId')?.value || '').toString().trim() || null,
       };
       showMessage(editMsg, 'Saving…', 'info');
       const res = await authedFetch('/challenges/' + id, {
@@ -367,6 +375,37 @@
       editForm.dataset.busy = '';
       if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = originalLabel; }
     });
+
+    const editFileInput = document.getElementById('adminEditMedia');
+    const editFileIdInput = document.getElementById('adminEditFileId');
+    if (editFileInput) {
+      editFileInput.addEventListener('change', async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (editFileIdInput) editFileIdInput.value = '';
+        const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm', 'video/quicktime'];
+        if (!allowed.includes(file.type)) {
+          showToast('❌ Unsupported file type', 'error');
+          e.target.value = '';
+          return;
+        }
+        const maxSize = file.type.startsWith('video') ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+        if (file.size > maxSize) {
+          showToast(`❌ File too large (max ${Math.round(maxSize / (1024 * 1024))}MB)`, 'error');
+          e.target.value = '';
+          return;
+        }
+        showToast('Uploading media…', 'info');
+        const fileId = await uploadMediaFile(file);
+        if (fileId) {
+          if (editFileIdInput) editFileIdInput.value = fileId;
+          showToast('✅ Media uploaded', 'success');
+        } else {
+          if (editFileIdInput) editFileIdInput.value = '';
+          showToast('Media upload failed', 'error');
+        }
+      });
+    }
   }
 
   // -------- USERS --------

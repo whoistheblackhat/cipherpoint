@@ -420,6 +420,37 @@
                     <label>Walkthrough</label>
                     <textarea name="walkthrough" maxlength="4000"></textarea>
                 </div>
+                <div class="form-row">
+                    <div>
+                        <label>Hint 1</label>
+                        <textarea name="hint_1" maxlength="1000"></textarea>
+                    </div>
+                    <div>
+                        <label>Hint 1 Cost (coins)</label>
+                        <input name="hint_1_cost" type="number" min="0" max="1000" value="10">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div>
+                        <label>Hint 2</label>
+                        <textarea name="hint_2" maxlength="1000"></textarea>
+                    </div>
+                    <div>
+                        <label>Hint 2 Cost (coins)</label>
+                        <input name="hint_2_cost" type="number" min="0" max="1000" value="20">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div>
+                        <label>Tags (comma-separated)</label>
+                        <input name="tags" maxlength="200" placeholder="osint, geo, reverse-image">
+                    </div>
+                    <div>
+                        <label>Media Upload (optional)</label>
+                        <input type="file" id="adminEditMedia" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,video/quicktime">
+                        <input type="hidden" id="adminEditFileId" name="telegram_file_id" value="">
+                    </div>
+                </div>
                 <div id="adminEditMessage" class="form-message"></div>
                 <div class="actions">
                     <button type="button" class="btn btn-light" id="editCancel">Cancel</button>

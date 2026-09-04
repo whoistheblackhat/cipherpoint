@@ -2384,6 +2384,8 @@ class ChallengeUpdateRequest(BaseModel):
     points_reward: Optional[int] = None
     tags: Optional[str] = None
     solution_walkthrough: Optional[str] = None
+    difficulty: Optional[str] = None
+    telegram_file_id: Optional[str] = None
 
 
 @app.put("/api/challenges/{challenge_id}")
@@ -2441,6 +2443,14 @@ def update_challenge(
         if len(payload.solution_walkthrough) > CHALLENGE_WALKTHROUGH_MAX:
             raise HTTPException(status_code=400, detail=f"Walkthrough is too long (max {CHALLENGE_WALKTHROUGH_MAX} characters).")
         challenge.solution_walkthrough = payload.solution_walkthrough.strip() or None
+    if payload.difficulty is not None:
+        if payload.difficulty not in ALLOWED_DIFFICULTIES:
+            raise HTTPException(status_code=400, detail=f"Difficulty must be one of: {', '.join(sorted(ALLOWED_DIFFICULTIES))}")
+        challenge.difficulty = payload.difficulty
+    if payload.telegram_file_id is not None:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{0,256}", payload.telegram_file_id or ""):
+            raise HTTPException(status_code=400, detail="Invalid telegram_file_id format")
+        challenge.telegram_file_id = payload.telegram_file_id.strip() or None
 
     db.commit()
     db.refresh(challenge)

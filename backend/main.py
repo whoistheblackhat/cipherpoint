@@ -715,6 +715,9 @@ def get_current_admin_user(user_id: int = Depends(verify_token), db: Session = D
         raise HTTPException(status_code=404, detail="User not found")
     if db.query(UserBan).filter(UserBan.user_id == user.id).first():
         raise HTTPException(status_code=403, detail="Your account has been suspended.")
+    if not getattr(user, "is_admin", False):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
 
 
 def _check_content_spam(ip_address: str, user_id: int, db: Session) -> None:
@@ -736,14 +739,11 @@ def _check_content_spam(ip_address: str, user_id: int, db: Session) -> None:
         .all()
     }
     all_users = comment_users | report_users
-    other_users = all_users - {user_id}
-    if len(other_users) >= 2:
-        user = db.query(User).filter(User.id == user_id).first()
-        if user and not user.flagged_for_review:
-            user.flagged_for_review = True
-    if not getattr(user, "is_admin", False):
-        raise HTTPException(status_code=403, detail="Admin access required")
-    return user
+    if len(all_users) >= 2:
+        for uid in all_users:
+            user = db.query(User).filter(User.id == uid).first()
+            if user and not user.flagged_for_review:
+                user.flagged_for_review = True
 
 
 def ensure_user_not_banned(user_id: int, db: Session):
@@ -1049,11 +1049,10 @@ def login(payload: UserLoginRequest, request: Request, db: Session = Depends(get
     # against a dummy hash so the response time is similar to a real
     # failed login. This makes username enumeration via timing harder.
     if not user:
-        # Hash a throwaway password so bcrypt runs in any case
-        try:
-            bcrypt.checkpw(b"x", b"$2b$12$" + b"x" * 53)
-        except Exception:
-            pass
+        bcrypt.checkpw(
+            b"constant-time-dummy",
+            b"$2b$12$XFrudmMD.Sd8B7Mmy2GMiu2W3JF/JdTlh5Qb97ghtVy.4hDtzvTNa"
+        )
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     # Account lockout check

@@ -164,6 +164,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Trust proxy headers to get real client IP behind Cloudflare/load balancers.
+# This is critical for rate limiting to work correctly in production.
+TRUSTED_PROXY_COUNT = int(os.getenv("TRUSTED_PROXY_COUNT", "1"))
+
+
+def get_real_ip(request: Request) -> str:
+    """Extract the real client IP from proxy headers.
+
+    Cloudflare sends the original client IP in the X-Forwarded-For header.
+    The header format is: X-Forwarded-For: <client>, <proxy1>, <proxy2>
+    We take the left-most IP (the original client).
+    """
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        ips = [ip.strip() for ip in forwarded.split(",") if ip.strip()]
+        return ips[0] if ips else (request.client.host if request.client else "unknown")
+    return request.client.host if request.client else "unknown"
+
+
+# Middleware to attach real IP to request state
+@app.middleware("http")
+async def attach_real_ip(request: Request, call_next):
+    request.state.real_ip = get_real_ip(request)
+    response = await call_next(request)
+    return response
+
 # Security headers middleware — clickjacking, MIME sniffing, HSTS, etc.
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
@@ -792,7 +818,7 @@ def create_comment(
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found")
 
-    ip = request.client.host if request.client else "unknown"
+    ip = request.state.real_ip
     allowed, retry = rate_limit_check(f"comment_user:{user_id}", max_events=10, window_seconds=60)
     if not allowed:
         raise HTTPException(
@@ -848,12 +874,12 @@ def signup(payload: UserSignupRequest, request: Request, db: Session = Depends(g
         the source of truth, and we catch IntegrityError as a backstop.
     """
     if TURNSTILE_SECRET_KEY and TURNSTILE_ENABLED:
-        remote_ip = request.client.host if request.client else None
+        remote_ip = request.state.real_ip
         if not verify_turnstile_token(payload.turnstile_token, remote_ip):
             raise HTTPException(status_code=403, detail="Turnstile verification failed. Please complete the security check.")
 
     # Per-IP rate limit (defense against mass account creation / spam)
-    ip = request.client.host if request.client else "unknown"
+    ip = request.state.real_ip
     allowed, retry = rate_limit_check(f"signup_ip:{ip}", max_events=5, window_seconds=3600)
     if not allowed:
         raise HTTPException(
@@ -861,6 +887,18 @@ def signup(payload: UserSignupRequest, request: Request, db: Session = Depends(g
             detail=f"Too many signups from this network. Try again in {retry}s.",
             headers={"Retry-After": str(retry)},
         )
+
+    # Account/email/username cooldown: block rapid signup attempts even if IP rotates
+    email_lower = (payload.email or "").strip().lower()
+    username_lower = (payload.username or "").strip().lower()
+    for key in [f"signup_email:{email_lower}", f"signup_username:{username_lower}"]:
+        allowed, retry = rate_limit_check(key, max_events=3, window_seconds=3600)
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many signup attempts. Try again in {retry}s.",
+                headers={"Retry-After": str(retry)},
+            )
 
     username = (payload.username or "").strip()
     email = (payload.email or "").strip().lower()
@@ -932,12 +970,12 @@ def login(payload: UserLoginRequest, request: Request, db: Session = Depends(get
         username-enumeration via response timing.
     """
     if TURNSTILE_SECRET_KEY and TURNSTILE_ENABLED:
-        remote_ip = request.client.host if request.client else None
+        remote_ip = request.state.real_ip
         if not verify_turnstile_token(payload.turnstile_token, remote_ip):
             raise HTTPException(status_code=403, detail="Turnstile verification failed. Please complete the security check.")
 
     # Per-IP rate limit (defense against credential stuffing)
-    ip = request.client.host if request.client else "unknown"
+    ip = request.state.real_ip
     allowed, retry = rate_limit_check(f"login_ip:{ip}", max_events=20, window_seconds=300)
     if not allowed:
         raise HTTPException(
@@ -946,7 +984,19 @@ def login(payload: UserLoginRequest, request: Request, db: Session = Depends(get
             headers={"Retry-After": str(retry)},
         )
 
+    # Account-level rate limit: even if attacker rotates IPs, they can't
+    # brute-force the same account more than 10 times per 5 minutes.
     identifier = (payload.username or "").strip()
+    if identifier:
+        account_key = f"login_account:{identifier.lower()}"
+        allowed, retry = rate_limit_check(account_key, max_events=10, window_seconds=300)
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many login attempts for this account. Try again in {retry}s.",
+                headers={"Retry-After": str(retry)},
+            )
+
     if not identifier:
         raise HTTPException(status_code=400, detail="Username or email is required")
 
@@ -1024,12 +1074,12 @@ def login_otp_request(payload: OtpLoginRequest, request: Request, db: Session = 
         raise HTTPException(status_code=400, detail="A valid Telegram chat ID is required")
 
     if TURNSTILE_SECRET_KEY and TURNSTILE_ENABLED:
-        remote_ip = request.client.host if request.client else None
+        remote_ip = request.state.real_ip
         if not verify_turnstile_token(payload.turnstile_token, remote_ip):
             raise HTTPException(status_code=403, detail="Turnstile verification failed. Please complete the security check.")
 
     # Per-IP rate limit (defense against OTP-spam to a leaked chat_id)
-    ip = request.client.host if request.client else "unknown"
+    ip = request.state.real_ip
     allowed, retry = rate_limit_check(f"otp_req_ip:{ip}", max_events=10, window_seconds=300)
     if not allowed:
         raise HTTPException(
@@ -1096,7 +1146,7 @@ def login_otp_verify(payload: OtpVerifyRequest, request: Request, db: Session = 
         raise HTTPException(status_code=400, detail="Chat ID and OTP are required")
 
     # Per-IP rate limit (in addition to the per-user cap)
-    ip = request.client.host if request.client else "unknown"
+    ip = request.state.real_ip
     allowed, retry = rate_limit_check(f"otp_ip:{ip}", max_events=10, window_seconds=300)
     if not allowed:
         raise HTTPException(
@@ -1771,18 +1821,29 @@ def request_password_reset(payload: PasswordResetRequest, request: Request, db: 
         username-enumeration via response timing or status code.
     """
     if TURNSTILE_SECRET_KEY and TURNSTILE_ENABLED:
-        remote_ip = request.client.host if request.client else None
+        remote_ip = request.state.real_ip
         if not verify_turnstile_token(payload.turnstile_token, remote_ip):
             raise HTTPException(status_code=403, detail="Turnstile verification failed. Please complete the security check.")
 
-    ip = request.client.host if request.client else "unknown"
+    ip = request.state.real_ip
     allowed, retry = rate_limit_check(f"reset_ip:{ip}", max_events=5, window_seconds=3600)
     if not allowed:
         raise HTTPException(
             status_code=429,
-            detail=f"Too many reset requests. Try again in {retry}s.",
+            detail=f"Too many password reset attempts. Try again in {retry}s.",
             headers={"Retry-After": str(retry)},
         )
+
+    # Account-level rate limit: prevent reset spam for a specific user
+    username_key = (payload.username or "").strip().lower()
+    if username_key:
+        allowed, retry = rate_limit_check(f"reset_account:{username_key}", max_events=3, window_seconds=3600)
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many reset attempts for this account. Try again in {retry}s.",
+                headers={"Retry-After": str(retry)},
+            )
 
     raw_identifier = (payload.username or "").strip()
     normalized = raw_identifier.lower()
@@ -2174,7 +2235,7 @@ def report_challenge(
     db: Session = Depends(get_db)
 ):
     """Allow users to flag a challenge for moderation review."""
-    ip = request.client.host if request.client else "unknown"
+    ip = request.state.real_ip
     allowed, retry = rate_limit_check(f"report_user:{reporter_id}", max_events=5, window_seconds=3600)
     if not allowed:
         raise HTTPException(
@@ -2572,13 +2633,23 @@ def submit_flag(
     from security import rate_limit_check
 
     # Per-IP rate limit (defense against brute-force on the flag value)
-    ip = request.client.host if request.client else "unknown"
+    ip = request.state.real_ip
     allowed, retry = rate_limit_check(f"submit_ip:{ip}", max_events=30, window_seconds=300)
     if not allowed:
         raise HTTPException(
             status_code=429,
             detail=f"Too many submission attempts from this network. Try again in {retry}s.",
             headers={"Retry-After": str(retry)},
+        )
+
+    # Account-level rate limit: slow down credential stuffing even if IPs rotate.
+    # This catches the "many IPs, same account" and "many accounts, same IP" patterns.
+    user_allowed, user_retry = rate_limit_check(f"submit_user:{user_id}", max_events=50, window_seconds=300)
+    if not user_allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many submission attempts. Try again in {user_retry}s.",
+            headers={"Retry-After": str(user_retry)},
         )
 
     challenge_id = payload.challenge_id
@@ -2856,6 +2927,37 @@ def get_media(file_id: str, download: int = 0, request: Request = None):
             "Cache-Control": "private, max-age=300",
         },
     )
+
+# ==================== HONEYPOT / TRAP ROUTES ====================
+# These paths are not linked from anywhere on the frontend. Bots and
+# automated scanners that blindly crawl every URL will hit them.
+# When accessed, we record the IP and slow it down to make scanning
+# expensive for the attacker.
+
+_HONEYPOT_PATHS = [
+    "/.env",
+    "/.git",
+    "/.well-known/admin",
+    "/wp-login.php",
+    "/xmlrpc.php",
+    "/.htaccess",
+    "/server-status",
+    "/phpmyadmin",
+    "/admin/login",
+    "/api/v1/admin",
+]
+
+for _path in _HONEYPOT_PATHS:
+    @app.get(_path, include_in_schema=False)
+    async def _honeypot(request: Request, _path=_path):
+        ip = request.state.real_ip
+        # Mark as suspicious — slow this IP down for future requests.
+        rate_limit_check(f"honeypot:{ip}", max_events=1, window_seconds=86400)
+        return JSONResponse(
+            status_code=404,
+            content={"detail": "Not Found"},
+            headers={"Cache-Control": "no-store"},
+        )
 
 # ==================== HEALTH CHECK ====================
 

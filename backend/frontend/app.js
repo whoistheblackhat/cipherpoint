@@ -3202,6 +3202,21 @@ function setupCommentsPage() {
       await loadComments(challengeId);
     });
   });
+
+  const replyForm = document.getElementById('replyForm');
+  if (replyForm) {
+    replyForm.addEventListener('submit', (e) => submitReply(e));
+  }
+  const replyCancelBtn = document.getElementById('replyCancelBtn');
+  if (replyCancelBtn) {
+    replyCancelBtn.addEventListener('click', closeReplyModal);
+  }
+  const replyModal = document.getElementById('replyModal');
+  if (replyModal) {
+    replyModal.querySelectorAll('.modal-close').forEach((btn) => {
+      btn.addEventListener('click', closeReplyModal);
+    });
+  }
 }
 
 function getInitials(name) {
@@ -3323,42 +3338,73 @@ async function submitTopLevelComment(challengeId) {
   }
 }
 
+let replyParentId = null;
+let replyChallengeId = null;
+
 async function replyToComment(parentId, challengeId) {
   if (!currentUser) {
     showToast('⚠️ Please login to reply', 'error');
     return;
   }
 
-  const body = prompt('Write your reply:');
-  if (!body || !body.trim()) return;
+  replyParentId = parentId;
+  replyChallengeId = challengeId;
 
-  const token = localStorage.getItem('token');
-  if (!token) {
-    showToast('⚠️ Session expired', 'error');
+  const modal = document.getElementById('replyModal');
+  const bodyInput = document.getElementById('replyBody');
+  const messageEl = document.getElementById('replyMessage');
+  if (!modal || !bodyInput) {
+    showToast('Reply UI not available', 'error');
     return;
   }
 
-  try {
-    const response = await fetch(`${API_BASE_URL}/challenges/${challengeId}/comments`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({ body: body.trim(), parent_id: parentId })
-    });
+  bodyInput.value = '';
+  if (messageEl) { messageEl.className = 'form-message'; messageEl.textContent = ''; }
+  modal.classList.add('active');
+  setTimeout(() => bodyInput.focus(), 100);
+}
 
+function closeReplyModal() {
+  const modal = document.getElementById('replyModal');
+  if (modal) modal.classList.remove('active');
+  replyParentId = null;
+  replyChallengeId = null;
+}
+
+async function submitReply(event) {
+  event.preventDefault();
+  if (!replyParentId || !replyChallengeId) return;
+
+  const bodyInput = document.getElementById('replyBody');
+  const messageEl = document.getElementById('replyMessage');
+  const body = (bodyInput?.value || '').trim();
+  if (!body) {
+    if (messageEl) { messageEl.className = 'form-message show error'; messageEl.textContent = 'Reply cannot be empty'; }
+    return;
+  }
+
+  const token = localStorage.getItem('token');
+  if (!token) { showToast('⚠️ Session expired', 'error'); return; }
+
+  if (messageEl) { messageEl.className = 'form-message show info'; messageEl.textContent = 'Posting…'; }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/challenges/${replyChallengeId}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ body, parent_id: replyParentId })
+    });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      showToast(data.detail || 'Reply failed', 'error');
+      if (messageEl) { messageEl.className = 'form-message show error'; messageEl.textContent = data.detail || 'Reply failed'; }
       return;
     }
-
     showToast('✅ Reply posted', 'success');
-    await loadComments(challengeId);
+    closeReplyModal();
+    await loadComments(replyChallengeId);
   } catch (error) {
     console.error('Error posting reply:', error);
-    showToast('❌ Unable to post reply', 'error');
+    if (messageEl) { messageEl.className = 'form-message show error'; messageEl.textContent = 'Unable to post reply'; }
   }
 }
 

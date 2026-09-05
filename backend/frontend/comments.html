@@ -124,6 +124,29 @@
         </div>
     </div>
 
+    <div id="replyModal" class="modal">
+        <div class="modal-card">
+            <button class="modal-close" aria-label="Close reply">&times;</button>
+            <div class="form-header" style="margin-bottom:18px;">
+                <div>
+                    <span class="eyebrow">Discussion</span>
+                    <h3>Write a Reply</h3>
+                </div>
+            </div>
+            <form id="replyForm" class="community-form">
+                <div class="field-wrap">
+                    <label for="replyBody">Your reply</label>
+                    <textarea id="replyBody" rows="4" placeholder="Share your thoughts..." required></textarea>
+                </div>
+                <div id="replyMessage" class="form-message"></div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-light" id="replyCancelBtn">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-paper-plane"></i> Post Reply</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <footer class="site-footer">
         <div class="container footer-inner">
             <div>© 2026 CipherPoint</div>

@@ -120,12 +120,16 @@ def init_db():
         comment_columns = conn.execute(text("PRAGMA table_info(comments)")).fetchall()
         if comment_columns and not any(column[1] == "parent_id" for column in comment_columns):
             conn.execute(text("ALTER TABLE comments ADD COLUMN parent_id INTEGER REFERENCES comments(id)"))
+        if comment_columns and not any(column[1] == "ip_address" for column in comment_columns):
+            conn.execute(text("ALTER TABLE comments ADD COLUMN ip_address VARCHAR"))
 
         report_columns = conn.execute(text("PRAGMA table_info(challenge_reports)")).fetchall()
         if report_columns and not any(column[1] == "comment_id" for column in report_columns):
             conn.execute(text("ALTER TABLE challenge_reports ADD COLUMN comment_id INTEGER REFERENCES comments(id)"))
         if report_columns and not any(column[1] == "target_type" for column in report_columns):
             conn.execute(text("ALTER TABLE challenge_reports ADD COLUMN target_type VARCHAR DEFAULT 'challenge' NOT NULL"))
+        if report_columns and not any(column[1] == "ip_address" for column in report_columns):
+            conn.execute(text("ALTER TABLE challenge_reports ADD COLUMN ip_address VARCHAR"))
 
         ban_columns = conn.execute(text("PRAGMA table_info(user_bans)")).fetchall()
         if ban_columns and not any(column[1] == "expires_at" for column in ban_columns):
@@ -155,6 +159,13 @@ def init_db():
             ("fastest_solve_seconds", "INTEGER"),
             ("first_solve_at", "DATETIME"),
         ]
-        for col_name, col_type in badge_columns:
+        security_columns = [
+            ("device_fingerprint_hash", "TEXT"),
+            ("last_login_ip", "TEXT"),
+            ("last_login_user_agent", "TEXT"),
+            ("login_ip_history", "TEXT"),
+            ("flagged_for_review", "INTEGER DEFAULT 0 NOT NULL"),
+        ]
+        for col_name, col_type in badge_columns + security_columns:
             if col_name not in user_column_names:
                 conn.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}"))

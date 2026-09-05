@@ -42,6 +42,13 @@ class User(Base):
     profile_views = Column(Integer, default=0, nullable=False)
     fastest_solve_seconds = Column(Integer, nullable=True)
     first_solve_at = Column(DateTime, nullable=True)
+    # Device fingerprinting (same-device multi-account detection)
+    device_fingerprint_hash = Column(String, nullable=True, index=True)
+    # Login anomaly detection
+    last_login_ip = Column(String, nullable=True)
+    last_login_user_agent = Column(String, nullable=True)
+    login_ip_history = Column(Text, nullable=True)  # JSON array of recent IPs
+    flagged_for_review = Column(Boolean, default=False, nullable=False)
     # Account lockout (defends against password brute-force)
     failed_login_count = Column(Integer, default=0, nullable=False)
     locked_until = Column(DateTime, nullable=True)
@@ -134,6 +141,7 @@ class ChallengeReport(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     resolved_at = Column(DateTime, nullable=True)
     resolved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    ip_address = Column(String, nullable=True)
 
     challenge = relationship("Challenge", back_populates="reports")
     reporter = relationship("User", back_populates="reports", foreign_keys=[reporter_id])
@@ -170,6 +178,7 @@ class Comment(Base):
     body = Column(Text, nullable=False)
     parent_id = Column(Integer, ForeignKey("comments.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    ip_address = Column(String, nullable=True)
 
     challenge = relationship("Challenge", backref="comments")
     author = relationship("User")

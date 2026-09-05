@@ -265,12 +265,17 @@
                 <div class="label">Solves (24h)</div>
                 <div class="value" id="statSolves">—</div>
             </div>
+            <div class="stat-card">
+                <div class="label">Flagged Users</div>
+                <div class="value" id="statFlagged">—</div>
+            </div>
         </div>
 
         <div class="admin-tabs">
             <button class="admin-tab active" data-tab="create"><i class="fa-solid fa-plus"></i> Create Challenge</button>
             <button class="admin-tab" data-tab="edit"><i class="fa-solid fa-pen-to-square"></i> Edit / Delete</button>
             <button class="admin-tab" data-tab="users"><i class="fa-solid fa-users"></i> User Management</button>
+            <button class="admin-tab" data-tab="flagged"><i class="fa-solid fa-flag"></i> Flagged Users</button>
             <button class="admin-tab" data-tab="moderation"><i class="fa-solid fa-flag"></i> Moderation Queue</button>
         </div>
 
@@ -373,6 +378,17 @@
                 <div id="userListMessage" class="form-message"></div>
                 <ul class="admin-list" id="userList">
                     <li style="text-align:center;color:#8b949e;">Use the search above to find a user.</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- FLAGGED USERS -->
+        <section class="admin-panel" data-panel="flagged">
+            <div class="admin-card">
+                <h2><i class="fa-solid fa-flag"></i> Flagged Users</h2>
+                <div id="flaggedListMessage" class="form-message"></div>
+                <ul class="admin-list" id="flaggedList">
+                    <li style="text-align:center;color:#8b949e;">Loading…</li>
                 </ul>
             </div>
         </section>

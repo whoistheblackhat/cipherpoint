@@ -27,6 +27,7 @@ import requests
 import hmac
 from dotenv import load_dotenv
 from typing import Optional
+import json
 from html import escape as escape_html
 from sqlalchemy import text, func
 from sqlalchemy.exc import IntegrityError
@@ -231,6 +232,7 @@ class UserSignupRequest(BaseModel):
     email: str
     password: str
     turnstile_token: str | None = None
+    fingerprint: str | None = None
 
 class UserLoginRequest(BaseModel):
     username: str
@@ -713,6 +715,32 @@ def get_current_admin_user(user_id: int = Depends(verify_token), db: Session = D
         raise HTTPException(status_code=404, detail="User not found")
     if db.query(UserBan).filter(UserBan.user_id == user.id).first():
         raise HTTPException(status_code=403, detail="Your account has been suspended.")
+
+
+def _check_content_spam(ip_address: str, user_id: int, db: Session) -> None:
+    """Flag user if their IP is associated with multiple accounts creating
+    comments or reports recently (coordinated spam / account sharing)."""
+    if not ip_address or ip_address in {"127.0.0.1", "::1", "unknown"}:
+        return
+    cutoff = datetime.utcnow() - timedelta(hours=24)
+    comment_users = {
+        row[0] for row in db.query(Comment.user_id)
+        .filter(Comment.ip_address == ip_address, Comment.created_at >= cutoff)
+        .distinct()
+        .all()
+    }
+    report_users = {
+        row[0] for row in db.query(ChallengeReport.reporter_id)
+        .filter(ChallengeReport.ip_address == ip_address, ChallengeReport.created_at >= cutoff)
+        .distinct()
+        .all()
+    }
+    all_users = comment_users | report_users
+    other_users = all_users - {user_id}
+    if len(other_users) >= 2:
+        user = db.query(User).filter(User.id == user_id).first()
+        if user and not user.flagged_for_review:
+            user.flagged_for_review = True
     if not getattr(user, "is_admin", False):
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
@@ -842,10 +870,13 @@ def create_comment(
         if not parent:
             raise HTTPException(status_code=400, detail="Parent comment not found")
 
-    new_comment = Comment(challenge_id=challenge_id, user_id=user_id, body=body, parent_id=parent_id)
+    new_comment = Comment(challenge_id=challenge_id, user_id=user_id, body=body, parent_id=parent_id, ip_address=ip)
     db.add(new_comment)
     db.commit()
     db.refresh(new_comment)
+
+    _check_content_spam(ip, user_id, db)
+    db.commit()
 
     author = db.query(User).filter(User.id == user_id).first()
     return {
@@ -933,6 +964,15 @@ def signup(payload: UserSignupRequest, request: Request, db: Session = Depends(g
             rank_points=0,
             is_admin=False,
         )
+        # Store device fingerprint if provided
+        if payload.fingerprint:
+            new_user.device_fingerprint_hash = payload.fingerprint[:128]
+            # Check for duplicate fingerprints (same device, different account)
+            duplicate = db.query(User).filter(
+                User.device_fingerprint_hash == payload.fingerprint[:128]
+            ).first()
+            if duplicate:
+                new_user.flagged_for_review = True
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
@@ -1028,16 +1068,41 @@ def login(payload: UserLoginRequest, request: Request, db: Session = Depends(get
     if not verify_password(payload.password, user.password_hash):
         record_failed_login(user)
         db.commit()
-        # Generic message — never reveal whether the password was wrong vs.
-        # whether the user exists.
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # Successful login: reset counters, clear rate-limit bucket
     record_successful_login(user)
     db.commit()
     rate_limit_reset(f"login_user:{user.id}")
 
     ensure_user_not_banned(user.id, db)
+    
+    # Login anomaly detection: track IP/UA changes
+    login_ip = request.state.real_ip
+    login_ua = (request.headers.get("user-agent") or "").strip()[:256]
+    
+    if user.last_login_ip and user.last_login_ip != login_ip:
+        user.flagged_for_review = True
+    if user.last_login_user_agent and user.last_login_user_agent != login_ua:
+        user.flagged_for_review = True
+    
+    user.last_login_ip = login_ip
+    user.last_login_user_agent = login_ua
+    
+    # Update IP history (keep last 10)
+    try:
+        history = []
+        if user.login_ip_history:
+            history = json.loads(user.login_ip_history)
+            if not isinstance(history, list):
+                history = []
+        history = [ip for ip in history if ip != login_ip][:9]
+        history.append(login_ip)
+        user.login_ip_history = json.dumps(history)
+    except Exception:
+        pass
+    
+    db.commit()
+    
     access_token = create_access_token(data={"sub": user.id})
     return {
         "id": user.id,
@@ -1048,7 +1113,8 @@ def login(payload: UserLoginRequest, request: Request, db: Session = Depends(get
         "is_admin": bool(user.is_admin),
         "solved_count": db.query(SolvedChallenge).filter(SolvedChallenge.user_id == user.id).count(),
         "access_token": access_token,
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "flagged_for_review": bool(user.flagged_for_review),
     }
 
 OTP_REQUEST_WINDOW_SECONDS = 60
@@ -1251,8 +1317,52 @@ def get_current_user(user_id: int = Depends(verify_token), db: Session = Depends
         "profile_views": user.profile_views or 0,
         "fastest_solve_seconds": user.fastest_solve_seconds,
         "first_solve_at": user.first_solve_at.isoformat() if user.first_solve_at else None,
+        "flagged_for_review": bool(user.flagged_for_review),
         "created_at": user.created_at,
     }
+
+
+class FingerprintRequest(BaseModel):
+    fingerprint: Optional[str] = None
+
+
+@app.post("/api/auth/fingerprint")
+def store_fingerprint(
+    payload: FingerprintRequest,
+    user_id: int = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    """Store device fingerprint for anomaly detection.
+    
+    The fingerprint is a privacy-preserving hash — we never store raw
+    device data. It's used only to detect same-device multi-account
+    creation and suspicious login patterns.
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    fp = (payload.fingerprint or "").strip()
+    if not fp or len(fp) > 128:
+        return {"message": "Fingerprint skipped"}
+    
+    user.device_fingerprint_hash = fp[:128]
+    
+    # Check if this fingerprint is already used by another account
+    duplicate = db.query(User).filter(
+        User.device_fingerprint_hash == fp[:128],
+        User.id != user_id,
+        User.id.isnot(None)
+    ).first()
+    
+    if duplicate:
+        # Flag both accounts for review but don't block
+        user.flagged_for_review = True
+        if not duplicate.flagged_for_review:
+            duplicate.flagged_for_review = True
+    
+    db.commit()
+    return {"message": "Fingerprint stored", "flagged": bool(user.flagged_for_review)}
 
 @app.get("/api/profile")
 def get_profile(user_id: int = Depends(verify_token), db: Session = Depends(get_db)):
@@ -1616,6 +1726,69 @@ def admin_unban_user(
     db.delete(existing)
     db.commit()
     return {"message": "Ban lifted", "user_id": payload.user_id}
+
+
+@app.get("/api/admin/users/flagged")
+def admin_list_flagged_users(
+    limit: int = 50,
+    offset: int = 0,
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Admin: list users flagged for review."""
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+
+    base_query = db.query(User).filter(User.flagged_for_review == True)
+    total = base_query.count()
+    users = (
+        base_query
+        .order_by(User.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    result_ids = [u.id for u in users]
+    banned_ids = {
+        row.user_id
+        for row in db.query(UserBan.user_id).filter(UserBan.user_id.in_(result_ids)).all()
+    } if result_ids else set()
+
+    items = []
+    for u in users:
+        items.append({
+            "id": u.id,
+            "username": u.username,
+            "email": u.email,
+            "is_admin": bool(getattr(u, "is_admin", False)),
+            "banned": u.id in banned_ids,
+            "coins": u.coins or 0,
+            "rank_points": u.rank_points or 0,
+            "created_at": u.created_at.isoformat() if u.created_at else None,
+            "is_active": u.id not in banned_ids,
+            "flagged_for_review": bool(u.flagged_for_review),
+            "device_fingerprint_hash": u.device_fingerprint_hash,
+            "fastest_solve_seconds": u.fastest_solve_seconds,
+        })
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
+@app.post("/api/admin/users/unflag")
+def admin_unflag_user(
+    payload: AdminBanRequest,
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Admin: clear the flagged_for_review flag on a user."""
+    user = db.query(User).filter(User.id == payload.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not user.flagged_for_review:
+        raise HTTPException(status_code=404, detail="User is not flagged")
+    user.flagged_for_review = False
+    db.commit()
+    return {"message": "Flag cleared", "user_id": payload.user_id}
 
 
 # ==================== NOTIFICATIONS SETTINGS ====================
@@ -2287,9 +2460,13 @@ def report_challenge(
             reason=reason,
             details=details,
             status="open",
+            ip_address=ip,
         )
         challenge.report_count += 1
         db.add(report)
+        db.commit()
+
+        _check_content_spam(ip, reporter_id, db)
         db.commit()
 
         reporter = db.query(User).filter(User.id == reporter_id).first()
@@ -2696,6 +2873,9 @@ def submit_flag(
             solve_seconds = max(0, int((now - challenge.created_at).total_seconds()))
             if user.fastest_solve_seconds is None or solve_seconds < user.fastest_solve_seconds:
                 user.fastest_solve_seconds = solve_seconds
+            # Flag suspiciously fast solves (< 5 seconds) as potential bot activity
+            if solve_seconds < 5:
+                user.flagged_for_review = True
 
         solved_challenge = SolvedChallenge(user_id=user_id, challenge_id=challenge_id)
         db.add(solved_challenge)

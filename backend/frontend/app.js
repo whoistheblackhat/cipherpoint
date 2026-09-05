@@ -1,4 +1,58 @@
 const API_BASE_URL = '/api';
+
+// Device fingerprinting — lightweight, privacy-preserving browser fingerprint
+// Used to detect same-device multi-account creation and suspicious activity.
+const DEVICE_FINGERPRINT = (() => {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 200;
+    canvas.height = 50;
+    const ctx = canvas.getContext('2d');
+    ctx.textBaseline = 'top';
+    ctx.font = '14px Arial';
+    ctx.fillStyle = '#f60';
+    ctx.fillRect(125, 1, 62, 20);
+    ctx.fillStyle = '#069';
+    ctx.fillText('CipherPoint', 2, 15);
+    const dataUrl = canvas.toDataURL();
+    const nav = navigator;
+    const screen = window.screen;
+    const components = [
+      nav.userAgent,
+      nav.language,
+      screen.width + 'x' + screen.height,
+      screen.colorDepth,
+      new Date().getTimezoneOffset(),
+      nav.hardwareConcurrency || 0,
+      nav.platform,
+      dataUrl.slice(0, 64)  // canvas fingerprint prefix
+    ];
+    const raw = components.join('|');
+    let hash = 0;
+    for (let i = 0; i < raw.length; i++) {
+      const char = raw.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;  // Convert to 32bit integer
+    }
+    return Math.abs(hash).toString(36) + '_' + (nav.hardwareConcurrency || 0) + '_' + (screen.width || 0);
+  } catch (e) {
+    return 'fp_' + Math.random().toString(36).slice(2, 10);
+  }
+})();
+
+async function sendDeviceFingerprint() {
+  const token = localStorage.getItem('token');
+  if (!token) return;
+  try {
+    await fetch(`${API_BASE_URL}/auth/fingerprint`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ fingerprint: DEVICE_FINGERPRINT })
+    });
+  } catch (e) {
+    // Non-critical — don't block login if fingerprint fails
+  }
+}
 let currentUser = null;
 let allChallenges = [];
 let filteredChallenges = [];
@@ -971,7 +1025,7 @@ async function handleLogin(event) {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ username, password, turnstile_token: turnstileToken || null })
+      body: JSON.stringify({ username, password, turnstile_token: turnstileToken || null, fingerprint: DEVICE_FINGERPRINT })
     });
 
     const data = await response.json().catch(() => ({}));
@@ -1004,6 +1058,7 @@ async function handleLogin(event) {
     }
 
     showToast('✅ Login successful', 'success');
+    sendDeviceFingerprint();
     window.location.href = 'dashboard.html';
   } catch (error) {
     if (messageBox) {
@@ -1213,7 +1268,7 @@ async function handleSignup(event) {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ username, email, password, turnstile_token: turnstileToken || null })
+      body: JSON.stringify({ username, email, password, turnstile_token: turnstileToken || null, fingerprint: DEVICE_FINGERPRINT })
     });
 
     const data = await response.json().catch(() => ({}));
@@ -1240,6 +1295,7 @@ async function handleSignup(event) {
     }
 
     showToast('🎉 Account created successfully', 'success');
+    sendDeviceFingerprint();
     window.location.href = 'dashboard.html';
   } catch (error) {
     if (messageBox) {

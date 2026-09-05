@@ -114,10 +114,12 @@
     setupCreate();
     setupEdit();
     setupUsers();
+    setupFlaggedUsers();
     setupModeration();
 
     await loadStats();
     await loadEditList();
+    await loadFlaggedList();
     await loadModerationList();
 
     $('adminLogout').addEventListener('click', (e) => {
@@ -143,10 +145,11 @@
   // -------- STATS --------
   async function loadStats() {
     try {
-      const [usersRes, chRes, repRes] = await Promise.all([
+      const [usersRes, chRes, repRes, flaggedRes] = await Promise.all([
         authedFetch('/admin/users?limit=1'),
         authedFetch('/challenges?limit=1'),
-        authedFetch('/moderation/reports')
+        authedFetch('/moderation/reports'),
+        authedFetch('/admin/users/flagged?limit=1')
       ]);
       if (usersRes.ok && usersRes.data && typeof usersRes.data.total === 'number') {
         $('statUsers').textContent = usersRes.data.total;
@@ -162,6 +165,11 @@
         $('statReports').textContent = repRes.data.length;
       } else {
         $('statReports').textContent = '—';
+      }
+      if (flaggedRes.ok && typeof flaggedRes.data.total === 'number') {
+        $('statFlagged').textContent = flaggedRes.data.total;
+      } else {
+        $('statFlagged').textContent = '—';
       }
     } catch (err) {
       console.warn('loadStats failed', err);
@@ -484,6 +492,66 @@
         run();
       } else {
         showMessage(msg, (res.data && res.data.detail) || 'Ban failed', 'error');
+      }
+    });
+  }
+
+  // -------- FLAGGED USERS --------
+  function setupFlaggedUsers() {
+    const list = $('flaggedList');
+    const msg = $('flaggedListMessage');
+  }
+
+  async function loadFlaggedList() {
+    const list = $('flaggedList');
+    const msg = $('flaggedListMessage');
+    hideMessage(msg);
+    list.innerHTML = '<li style="text-align:center;color:#8b949e;">Loading…</li>';
+    const res = await authedFetch('/admin/users/flagged?limit=200');
+    if (!res.ok) {
+      list.innerHTML = '';
+      showMessage(msg, (res.data && res.data.detail) || 'Failed to load flagged users.', 'error');
+      return;
+    }
+    const users = Array.isArray(res.data) ? res.data : (res.data && res.data.items) || [];
+    if (!users.length) {
+      list.innerHTML = '<li style="text-align:center;color:#8b949e;">No flagged users. Good job!</li>';
+      return;
+    }
+    list.innerHTML = '';
+    users.forEach(u => {
+      const li = document.createElement('li');
+      const badges = [];
+      if (u.is_admin) badges.push('<span class="tag admin">admin</span>');
+      if (u.banned) badges.push('<span class="tag banned">banned</span>');
+      if (u.is_active !== false && !u.banned) badges.push('<span class="tag active">active</span>');
+      const reason = u.fastest_solve_seconds !== null && u.fastest_solve_seconds < 5
+        ? `Fast solve: ${u.fastest_solve_seconds}s`
+        : (u.device_fingerprint_hash ? 'Duplicate fingerprint' : 'Unknown');
+      li.innerHTML = `
+        <div class="meta-block">
+          <div class="title">#${u.id} ${escapeHtml(u.username || '')} ${badges.join(' ')}</div>
+          <div class="sub">${escapeHtml(u.email || '')} · ${u.coins || 0} coins · ${u.rank_points || 0} pts · ${reason}</div>
+        </div>
+        <button class="btn-icon" data-action="unflag" data-id="${u.id}" data-name="${escapeAttr(u.username || '')}"><i class="fa-solid fa-rotate-left"></i> Unflag</button>
+      `;
+      list.appendChild(li);
+    });
+
+    list.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-action="unflag"]');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      const res = await authedFetch('/admin/users/unflag', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: parseInt(id, 10) })
+      });
+      if (res.ok) {
+        showMessage(msg, `User #${id} unflagged.`, 'success');
+        await loadFlaggedList();
+        await loadStats();
+      } else {
+        showMessage(msg, (res.data && res.data.detail) || 'Unflag failed', 'error');
       }
     });
   }

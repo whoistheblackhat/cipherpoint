@@ -269,8 +269,8 @@ async function initializePage() {
     return;
   }
 
-  if (page === 'login' || page === 'signup') {
-    if (currentUser) {
+  if (page === 'login' || page === 'signup' || page === 'forgot') {
+    if (currentUser && page !== 'forgot') {
       window.location.href = 'dashboard.html';
       return;
     }

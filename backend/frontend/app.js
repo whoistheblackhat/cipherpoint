@@ -57,11 +57,19 @@ const badgeCatalog = [
     tone: 'cyan'
   },
   {
+    id: 'wealthy',
+    label: 'Wealthy',
+    icon: 'fa-sack-dollar',
+    description: 'Accumulate 500 or more coins.',
+    criteria: (user) => Number(user?.coins || 0) >= 500,
+    tone: 'green'
+  },
+  {
     id: 'builder',
     label: 'Community Builder',
     icon: 'fa-users',
     description: 'Publish a challenge to the community board.',
-    criteria: () => false,
+    criteria: (user) => Number(user?.weekly_challenges_used || 0) > 0,
     tone: 'violet'
   },
   {
@@ -71,6 +79,63 @@ const badgeCatalog = [
     description: 'Admin or moderator access granted.',
     criteria: (user) => Boolean(user?.is_admin),
     tone: 'indigo'
+  },
+  {
+    id: 'veteran',
+    label: 'Veteran',
+    icon: 'fa-hourglass-half',
+    description: 'Member for 30+ days.',
+    criteria: (user) => {
+      const created = user?.created_at ? new Date(user.created_at) : null;
+      if (!created) return false;
+      const diff = (Date.now() - created.getTime()) / (1000 * 60 * 60 * 24);
+      return diff >= 30;
+    },
+    tone: 'gray'
+  },
+  {
+    id: 'streak',
+    label: 'Streak Master',
+    icon: 'fa-fire',
+    description: '7-day daily bonus streak.',
+    criteria: (user) => Number(user?.daily_streak || 0) >= 7,
+    tone: 'orange'
+  },
+  {
+    id: 'bug_hunter',
+    label: 'Bug Hunter',
+    icon: 'fa-bug',
+    description: 'Have a report approved by moderators.',
+    criteria: (user) => Number(user?.reports_approved || 0) >= 1,
+    tone: 'yellow'
+  },
+  {
+    id: 'helper',
+    label: 'Helper',
+    icon: 'fa-handshake-angle',
+    description: 'Unlock 10 hints.',
+    criteria: (user) => Number(user?.hints_unlocked || 0) >= 10,
+    tone: 'teal'
+  },
+  {
+    id: 'completionist',
+    label: 'Completionist',
+    icon: 'fa-trophy',
+    description: 'Solve all available challenges.',
+    criteria: (user) => {
+      const solved = Number(user?.solved_count || 0);
+      const total = Number(user?.total_challenges || 0);
+      return total > 0 && solved >= total;
+    },
+    tone: 'gold'
+  },
+  {
+    id: 'speed_runner',
+    label: 'Speed Runner',
+    icon: 'fa-bolt',
+    description: 'Solve a challenge within 1 hour of its creation.',
+    criteria: (user) => Number(user?.fastest_solve_seconds || 999999) <= 3600,
+    tone: 'yellow'
   }
 ];
 

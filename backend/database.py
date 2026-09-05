@@ -144,3 +144,17 @@ def init_db():
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_solved_challenge_user_challenge "
             "ON solved_challenges (user_id, challenge_id)"
         ))
+
+        user_columns = conn.execute(text("PRAGMA table_info(users)")).fetchall()
+        user_column_names = [column[1] for column in user_columns]
+        badge_columns = [
+            ("daily_streak", "INTEGER DEFAULT 0 NOT NULL"),
+            ("reports_approved", "INTEGER DEFAULT 0 NOT NULL"),
+            ("hints_unlocked", "INTEGER DEFAULT 0 NOT NULL"),
+            ("profile_views", "INTEGER DEFAULT 0 NOT NULL"),
+            ("fastest_solve_seconds", "INTEGER"),
+            ("first_solve_at", "DATETIME"),
+        ]
+        for col_name, col_type in badge_columns:
+            if col_name not in user_column_names:
+                conn.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}"))

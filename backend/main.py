@@ -1180,6 +1180,7 @@ def get_current_user(user_id: int = Depends(verify_token), db: Session = Depends
     solved_count = db.query(SolvedChallenge).filter(SolvedChallenge.user_id == user_id).count()
     solved_challenges = db.query(SolvedChallenge).filter(SolvedChallenge.user_id == user_id).all()
     challenge_ids = [entry.challenge_id for entry in solved_challenges]
+    total_challenges = db.query(Challenge).filter(Challenge.status == "approved").count()
 
     return {
         "id": user.id,
@@ -1190,9 +1191,16 @@ def get_current_user(user_id: int = Depends(verify_token), db: Session = Depends
         "is_admin": bool(user.is_admin),
         "solved_count": solved_count,
         "solved_challenges": challenge_ids,
+        "total_challenges": total_challenges,
         "daily_bonus_claimed_at": user.daily_bonus_claimed_at,
         "weekly_challenges_used": user.weekly_challenges_used or 0,
         "weekly_reset_at": user.weekly_reset_at,
+        "daily_streak": user.daily_streak or 0,
+        "reports_approved": user.reports_approved or 0,
+        "hints_unlocked": user.hints_unlocked or 0,
+        "profile_views": user.profile_views or 0,
+        "fastest_solve_seconds": user.fastest_solve_seconds,
+        "first_solve_at": user.first_solve_at.isoformat() if user.first_solve_at else None,
         "created_at": user.created_at,
     }
 
@@ -1651,13 +1659,26 @@ def claim_daily_bonus(user_id: int = Depends(verify_token), db: Session = Depend
     ensure_user_not_banned(user_id, db)
 
     now = datetime.utcnow()
-    updated = db.query(User).filter(
-        User.id == user_id,
-        (User.daily_bonus_claimed_at.is_(None) | (func.date(User.daily_bonus_claimed_at) != now.date().isoformat())),
-    ).update(
+    today_str = now.date().isoformat()
+    last_claimed_date = user.daily_bonus_claimed_at.date().isoformat() if user.daily_bonus_claimed_at else None
+
+    if last_claimed_date == today_str:
+        raise HTTPException(status_code=409, detail="Daily bonus already claimed today")
+
+    new_streak = 1
+    if last_claimed_date:
+        from datetime import date
+        last_date = date.fromisoformat(last_claimed_date)
+        if (now.date() - last_date).days == 1:
+            new_streak = (user.daily_streak or 0) + 1
+        elif (now.date() - last_date).days > 1:
+            new_streak = 1
+
+    updated = db.query(User).filter(User.id == user_id).update(
         {
             User.coins: func.coalesce(User.coins, 0) + 10,
             User.daily_bonus_claimed_at: now,
+            User.daily_streak: new_streak,
         },
         synchronize_session=False,
     )
@@ -1666,7 +1687,7 @@ def claim_daily_bonus(user_id: int = Depends(verify_token), db: Session = Depend
 
     db.commit()
     db.refresh(user)
-    return {"message": "Daily bonus claimed", "coins_earned": 10, "total_coins": user.coins}
+    return {"message": "Daily bonus claimed", "coins_earned": 10, "total_coins": user.coins, "daily_streak": user.daily_streak}
 
 
 @app.get("/api/settings/telegram/bot-info")
@@ -2346,6 +2367,12 @@ def resolve_moderation_report(
     report.status = "resolved"
     report.resolved_at = datetime.utcnow()
     report.resolved_by = admin_user.id
+
+    if action == "approve" and report.reporter_id:
+        reporter = db.query(User).filter(User.id == report.reporter_id).first()
+        if reporter:
+            reporter.reports_approved = (reporter.reports_approved or 0) + 1
+
     db.commit()
     _cache_clear_prefix("challenges:")
     return {"message": f"Report resolved via {action}", "status": "resolved"}
@@ -2496,6 +2523,7 @@ def unlock_hint(payload: HintRequest, user_id: int = Depends(verify_token), db: 
     if user.coins < hint_cost:
         raise HTTPException(status_code=400, detail=f"Insufficient coins. Need {hint_cost}, have {user.coins}")
     user.coins -= hint_cost
+    user.hints_unlocked = (user.hints_unlocked or 0) + 1
     new_unlocked_hint = UnlockedHint(user_id=user_id, challenge_id=challenge_id, hint_number=hint_number)
     db.add(new_unlocked_hint)
     try:
@@ -2589,6 +2617,15 @@ def submit_flag(
             raise HTTPException(status_code=404, detail="User not found")
         user.coins = (user.coins or 0) + (challenge.points_reward or 0)
         user.rank_points = (user.rank_points or 0) + (challenge.points_reward or 0)
+
+        now = datetime.utcnow()
+        if user.first_solve_at is None:
+            user.first_solve_at = now
+        if challenge.created_at:
+            solve_seconds = max(0, int((now - challenge.created_at).total_seconds()))
+            if user.fastest_solve_seconds is None or solve_seconds < user.fastest_solve_seconds:
+                user.fastest_solve_seconds = solve_seconds
+
         solved_challenge = SolvedChallenge(user_id=user_id, challenge_id=challenge_id)
         db.add(solved_challenge)
         try:

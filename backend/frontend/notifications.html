@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <link rel="icon" rel="icon" href="favicon.ico">
+    <link rel="icon" href="favicon.ico">
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Notifications | CipherPoint</title>
@@ -79,6 +79,24 @@
 <body data-page="notifications">
     <canvas id="networkCanvas" width="1920" height="1080" style="position:fixed;inset:0;width:100vw;height:100vh;z-index:0;pointer-events:none;display:block;"></canvas>
 
+    <header class="site-header">
+        <nav class="topbar container">
+            <div class="brand-wrap">
+                <a href="index.html" style="text-decoration:none;color:inherit;display:flex;align-items:center;gap:10px;">
+                    <div class="brand-mark-icon"><i class="fa-solid fa-user-secret"></i></div>
+                    <div class="brand-text">CipherPoint</div>
+                </a>
+            </div>
+            <div>
+                <a href="dashboard.html">Dashboard</a>
+                <a href="community.html">Community</a>
+                <a href="leaderboard.html">Leaderboard</a>
+                <a href="about.html">About</a>
+                <a href="contact.html">Contact</a>
+            </div>
+        </nav>
+    </header>
+
     <div id="notifGate" class="gate">
         <i class="fa-solid fa-bell"></i>
         <h1>Notifications</h1>
@@ -87,9 +105,15 @@
     </div>
 
     <main id="notifApp" class="notif-page" style="display:none;">
-        <div class="notif-hero">
-            <h1>Notifications</h1>
-            <p>Choose what CipherPoint buzzes you about. All settings are per-account.</p>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:10px;">
+            <div class="notif-hero" style="margin-bottom:0;text-align:left;">
+                <h1 style="font-size:1.6rem;">Notifications</h1>
+                <p style="margin:0;">Choose what CipherPoint buzzes you about.</p>
+            </div>
+            <div style="display:flex;gap:10px;">
+                <a href="dashboard.html" class="btn btn-light"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+                <button id="notifLogout" class="btn btn-light" style="color:#f85149;"><i class="fa-solid fa-arrow-right-from-bracket"></i> Sign out</button>
+            </div>
         </div>
 
         <div class="notif-card">
@@ -178,6 +202,14 @@
           token() ? { Authorization: `Bearer ${token()}` } : {}
         );
         const res = await fetch('/api' + path, Object.assign({}, options, { headers }));
+        if (res.status === 401) {
+          try {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+          } catch {}
+          window.location.href = 'login.html';
+          return { ok: false, status: 401, data: { detail: 'Session expired' } };
+        }
         let data = null;
         try { data = await res.json(); } catch {}
         return { ok: res.ok, status: res.status, data };
@@ -219,6 +251,17 @@
         bindSwitch('prefComments', '/settings/notifications', { notify_comments: null }, 'prefMessage');
         bindSwitch('prefMentions', '/settings/notifications', { notify_mentions: null }, 'prefMessage');
         bindTelegramSwitch();
+
+        const logoutBtn = document.getElementById('notifLogout');
+        if (logoutBtn) {
+          logoutBtn.addEventListener('click', () => {
+            try {
+              localStorage.removeItem('token');
+              localStorage.removeItem('user');
+            } catch {}
+            window.location.href = 'login.html';
+          });
+        }
 
         loadActivity(me);
       }

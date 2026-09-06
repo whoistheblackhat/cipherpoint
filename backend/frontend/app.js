@@ -2856,7 +2856,10 @@ async function loadChallengeDetailPage(challengeId) {
   if (pageTitle) pageTitle.textContent = 'Loading...';
 
   try {
-    const response = await fetch(`${API_BASE_URL}/challenges/${challengeId}`);
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE_URL}/challenges/${challengeId}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
     if (!response.ok) throw new Error('Challenge lookup failed');
     const challenge = await response.json();
 
@@ -2938,7 +2941,6 @@ async function loadChallengeDetailPage(challengeId) {
       commentLink.href = `comments.html?id=${challenge.id}`;
     }
 
-    const token = localStorage.getItem('token');
     if (token) {
       try {
         const countEl = safeGetById('detailCommentCount');
@@ -2976,7 +2978,10 @@ async function loadCommentsPage(challengeId) {
   if (backBtn) backBtn.href = `challenge_detail.html?id=${challengeId}`;
 
   try {
-    const response = await fetch(`${API_BASE_URL}/challenges/${challengeId}`);
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE_URL}/challenges/${challengeId}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
     if (!response.ok) throw new Error('Challenge lookup failed');
     const challenge = await response.json();
 
@@ -3058,7 +3063,10 @@ async function openChallengeModal(challengeId, singlePageMode = false) {
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/challenges/${challengeId}`);
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE_URL}/challenges/${challengeId}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
     if (!response.ok) {
       throw new Error('Challenge lookup failed');
     }
@@ -3643,6 +3651,10 @@ async function submitFlag(challengeId) {
       renderChallenges();
       renderCommunityChallenges();
       await loadLeaderboard();
+
+      if (window.location.pathname.includes('challenge_detail.html')) {
+        await loadChallengeDetailPage(challengeId);
+      }
     } else {
       showToast(data.message || 'Incorrect flag', 'error');
     }

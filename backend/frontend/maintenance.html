@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" rel="icon" href="favicon.ico">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>CipherPoint | Maintenance</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(circle at top, #0d1117 0%, #010409 100%);
+            color: #e6edf3;
+            font-family: 'Inter', system-ui, sans-serif;
+            padding: 24px;
+            box-sizing: border-box;
+        }
+        .maintenance-card {
+            max-width: 560px;
+            width: 100%;
+            text-align: center;
+            background: rgba(22, 27, 34, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid #30363d;
+            border-radius: 16px;
+            padding: 48px 32px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+        .maintenance-icon {
+            width: 96px;
+            height: 96px;
+            margin: 0 auto 24px;
+            background: linear-gradient(135deg, #f0883e 0%, #db6d28 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            color: #fff;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(240, 136, 62, 0.5); }
+            50% { transform: scale(1.05); box-shadow: 0 0 0 16px rgba(240, 136, 62, 0); }
+        }
+        h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin: 0 0 12px;
+            color: #f0f6fc;
+        }
+        .subtitle {
+            color: #8b949e;
+            font-size: 1rem;
+            margin: 0 0 32px;
+            line-height: 1.6;
+        }
+        .message {
+            background: #0d1117;
+            border-left: 3px solid #f0883e;
+            padding: 16px 20px;
+            border-radius: 6px;
+            margin: 24px 0;
+            text-align: left;
+            color: #c9d1d9;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+        .countdown {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin: 32px 0;
+        }
+        .countdown-unit {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 16px 8px;
+        }
+        .countdown-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #58a6ff;
+            display: block;
+            line-height: 1;
+        }
+        .countdown-label {
+            font-size: 0.75rem;
+            color: #8b949e;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 6px;
+            display: block;
+        }
+        .countdown.expired .countdown-value {
+            color: #3fb950;
+        }
+        .links {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-top: 32px;
+            flex-wrap: wrap;
+        }
+        .link {
+            color: #58a6ff;
+            text-decoration: none;
+            font-size: 0.9rem;
+            padding: 8px 16px;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+        .link:hover {
+            background: rgba(88, 166, 255, 0.1);
+        }
+        .admin-link {
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid #30363d;
+        }
+        .admin-link a {
+            color: #8b949e;
+            font-size: 0.85rem;
+            text-decoration: none;
+        }
+        .admin-link a:hover {
+            color: #58a6ff;
+        }
+    </style>
+</head>
+<body>
+    <div class="maintenance-card">
+        <div class="maintenance-icon">
+            <i class="fa-solid fa-screwdriver-wrench"></i>
+        </div>
+        <h1>Under Maintenance</h1>
+        <p class="subtitle">We're upgrading CipherPoint to serve you better.</p>
+
+        <div id="maintenanceMessage" class="message" style="display:none;"></div>
+
+        <div id="countdown" class="countdown" style="display:none;">
+            <div class="countdown-unit">
+                <span class="countdown-value" id="cdDays">00</span>
+                <span class="countdown-label">Days</span>
+            </div>
+            <div class="countdown-unit">
+                <span class="countdown-value" id="cdHours">00</span>
+                <span class="countdown-label">Hours</span>
+            </div>
+            <div class="countdown-unit">
+                <span class="countdown-value" id="cdMinutes">00</span>
+                <span class="countdown-label">Minutes</span>
+            </div>
+            <div class="countdown-unit">
+                <span class="countdown-value" id="cdSeconds">00</span>
+                <span class="countdown-label">Seconds</span>
+            </div>
+        </div>
+
+        <p class="subtitle" style="margin-top:32px;">
+            Follow us for live updates:
+        </p>
+        <div class="links">
+            <a class="link" href="/api-docs.html"><i class="fa-solid fa-book"></i> API Status</a>
+            <a class="link" href="mailto:support@cipherpoint.linkpc.net"><i class="fa-solid fa-envelope"></i> Support</a>
+        </div>
+
+        <div class="admin-link">
+            <a href="admin.html"><i class="fa-solid fa-shield-halved"></i> Admin Access</a>
+        </div>
+    </div>
+
+    <script>
+        // Fetch live maintenance status from the server so the page
+        // reflects whatever is currently configured (message, end time,
+        // banner colour, etc.) without needing a redeploy.
+        async function loadStatus() {
+            try {
+                const res = await fetch('/api/maintenance/status');
+                if (!res.ok) return; // fall back to the static copy
+                const data = await res.json();
+                if (data.message) {
+                    const el = document.getElementById('maintenanceMessage');
+                    el.textContent = data.message;
+                    el.style.display = 'block';
+                }
+                if (data.ends_at) {
+                    startCountdown(new Date(data.ends_at));
+                }
+            } catch (err) {
+                // Static page is fine even if the API is unreachable
+                console.warn('maintenance status fetch failed', err);
+            }
+        }
+
+        function startCountdown(target) {
+            const el = document.getElementById('countdown');
+            el.style.display = 'grid';
+            const days = document.getElementById('cdDays');
+            const hours = document.getElementById('cdHours');
+            const minutes = document.getElementById('cdMinutes');
+            const seconds = document.getElementById('cdSeconds');
+
+            function tick() {
+                const now = Date.now();
+                const diff = target.getTime() - now;
+                if (diff <= 0) {
+                    el.classList.add('expired');
+                    days.textContent = '✓';
+                    hours.textContent = '';
+                    minutes.textContent = '';
+                    seconds.textContent = 'Back online';
+                    return;
+                }
+                const totalSeconds = Math.floor(diff / 1000);
+                days.textContent = String(Math.floor(totalSeconds / 86400)).padStart(2, '0');
+                hours.textContent = String(Math.floor((totalSeconds % 86400) / 3600)).padStart(2, '0');
+                minutes.textContent = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+                seconds.textContent = String(totalSeconds % 60).padStart(2, '0');
+            }
+            tick();
+            setInterval(tick, 1000);
+        }
+
+        loadStatus();
+    </script>
+</body>
+</html>

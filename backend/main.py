@@ -63,11 +63,53 @@ TURNSTILE_SITE_KEY = os.getenv("SITE_KEY", "").strip()
 TURNSTILE_SECRET_KEY = os.getenv("CLOUDFLARE_SECRET_KEY", "").strip()
 TURNSTILE_ENABLED = os.getenv("TURNSTILE_ENABLED", "false").lower() == "true"
 
+# Maintenance mode: when MAINTENANCE_MODE=true the public site returns
+# 503 + a maintenance page. Admins (with a valid token) can still
+# reach the API to verify and recover. MAINTENANCE_UNTIL is an ISO-8601
+# UTC timestamp; once it passes, the site comes back online even if
+# MAINTENANCE_MODE wasn't toggled off (handy for scheduled windows).
+MAINTENANCE_MODE = os.getenv("MAINTENANCE_MODE", "false").lower() == "true"
+MAINTENANCE_MESSAGE = os.getenv("MAINTENANCE_MESSAGE", "We're upgrading CipherPoint to serve you better. We'll be back shortly.").strip()
+MAINTENANCE_UNTIL = os.getenv("MAINTENANCE_UNTIL", "").strip() or None  # ISO 8601, e.g. "2026-09-08T18:00:00Z"
+
 
 def get_turnstile_config():
     return {
         "turnstile_enabled": bool(TURNSTILE_ENABLED and TURNSTILE_SECRET_KEY),
         "site_key": TURNSTILE_SITE_KEY,
+    }
+
+
+def is_in_maintenance_window() -> bool:
+    """Returns True when the public site should be blocked.
+
+    The flag is the source of truth, but MAINTENANCE_UNTIL is a safety
+    net: if a deploy forgot to flip MAINTENANCE_MODE back off, the site
+    auto-recovers when the scheduled end time passes.
+    """
+    if not MAINTENANCE_MODE:
+        return False
+    if MAINTENANCE_UNTIL:
+        try:
+            # Accept both "2026-09-08T18:00:00Z" and "2026-09-08T18:00:00"
+            from datetime import datetime as _dt
+            until = _dt.fromisoformat(MAINTENANCE_UNTIL.replace("Z", "+00:00"))
+            now_utc = datetime.utcnow().replace(tzinfo=until.tzinfo)
+            if until <= now_utc:
+                return False  # scheduled window already passed
+        except ValueError:
+            # If the env value is malformed, treat the flag as the only signal
+            pass
+    return True
+
+
+def maintenance_status_payload() -> dict:
+    """JSON body for /api/maintenance/status - safe to expose publicly
+    (just a message + end time, no secrets)."""
+    return {
+        "enabled": is_in_maintenance_window(),
+        "message": MAINTENANCE_MESSAGE if is_in_maintenance_window() else None,
+        "ends_at": MAINTENANCE_UNTIL if is_in_maintenance_window() else None,
     }
 
 
@@ -198,6 +240,86 @@ async def attach_real_ip(request: Request, call_next):
     request.state.real_ip = get_real_ip(request)
     response = await call_next(request)
     return response
+
+
+@app.middleware("http")
+async def maintenance_gate(request: Request, call_next):
+    """Block public traffic when maintenance mode is on.
+
+    Admin users (identified by a valid admin JWT) bypass the gate so
+    they can still verify the site, manage challenges, and toggle the
+    mode off. The maintenance status endpoint is always reachable so
+    the front-end can poll it.
+
+    The gate returns:
+      - 503 with a JSON body for API callers (so scripts/mobile apps
+        get a machine-readable signal)
+      - 503 with the maintenance.html page for browser GETs
+    """
+    if not is_in_maintenance_window():
+        return await call_next(request)
+
+    path = request.url.path
+    # Always-allowed paths: status endpoint, the maintenance page itself,
+    # the static assets it needs, and the login endpoint so admins can
+    # authenticate during maintenance to flip the flag back off.
+    always_allowed = (
+        path == "/api/maintenance/status"
+        or path == "/maintenance.html"
+        or path == "/styles.css"
+        or path == "/favicon.ico"
+        or path == "/api/auth/login"
+    )
+    if always_allowed:
+        return await call_next(request)
+
+    # Admin bypass: if the request carries a valid admin JWT, let it
+    # through. We use the same dependency the admin panel uses so any
+    # future security checks (bans, etc.) are applied consistently.
+    auth = request.headers.get("authorization")
+    if auth and auth.lower().startswith("bearer "):
+        token = auth.split(" ", 1)[1]
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        except jwt.InvalidTokenError:
+            payload = None
+        if payload:
+            try:
+                uid = int(payload.get("sub"))
+            except (TypeError, ValueError):
+                uid = None
+            if uid:
+                # Quick DB hit to check admin status. We don't use
+                # Depends() here because middleware can't take FastAPI
+                # dependencies directly.
+                try:
+                    with SessionLocal() as s:
+                        u = s.query(User).filter(User.id == uid).first()
+                        if u and getattr(u, "is_admin", False):
+                            return await call_next(request)
+                except Exception as exc:
+                    print(f"[maintenance] admin bypass check failed: {exc}")
+
+    # Render a response based on what the client wants
+    accept = (request.headers.get("accept") or "").lower()
+    wants_html = "text/html" in accept or path.endswith(".html")
+    if wants_html and request.method == "GET":
+        try:
+            with open(os.path.join(os.path.dirname(__file__), "frontend", "maintenance.html"), "r", encoding="utf-8") as fh:
+                html = fh.read()
+            return HTMLResponse(content=html, status_code=503)
+        except FileNotFoundError:
+            pass
+    # API / non-HTML clients get a structured error they can handle
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": MAINTENANCE_MESSAGE,
+            "maintenance": True,
+            "ends_at": MAINTENANCE_UNTIL,
+        },
+    )
+
 
 # Security headers middleware — clickjacking, MIME sniffing, HSTS, etc.
 @app.middleware("http")
@@ -3409,6 +3531,48 @@ def health_check():
 def public_config():
     """Expose public client config without leaking secrets."""
     return get_turnstile_config()
+
+
+@app.get("/api/maintenance/status")
+def maintenance_status():
+    """Public read-only status of maintenance mode. The maintenance
+    page calls this so it can show the live message/countdown without
+    a redeploy. Always returns 200, even during maintenance, so the
+    front-end can read it from the gate page."""
+    return maintenance_status_payload()
+
+
+@app.post("/api/admin/maintenance")
+def admin_toggle_maintenance(
+    payload: dict,
+    admin_user: User = Depends(get_current_admin_user),
+):
+    """Admin: toggle maintenance mode on/off and update the message
+    or end time. Body: {enabled: bool, message?: str, until?: str}.
+    Changes are in-memory only — they last until the next deploy or
+    restart. For long-lived windows, set the env vars instead so they
+    survive a restart."""
+    global MAINTENANCE_MODE, MAINTENANCE_MESSAGE, MAINTENANCE_UNTIL
+    enabled = bool(payload.get("enabled"))
+    if "message" in payload and payload["message"] is not None:
+        new_msg = str(payload["message"]).strip()
+        if len(new_msg) > 1000:
+            raise HTTPException(status_code=400, detail="Message too long (max 1000 chars)")
+        MAINTENANCE_MESSAGE = new_msg or "We're upgrading CipherPoint. We'll be back shortly."
+    if "until" in payload:
+        until_val = (payload.get("until") or "").strip() or None
+        if until_val:
+            try:
+                from datetime import datetime as _dt
+                _dt.fromisoformat(until_val.replace("Z", "+00:00"))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid ISO-8601 timestamp for 'until'")
+        MAINTENANCE_UNTIL = until_val
+    MAINTENANCE_MODE = enabled
+    return {
+        "message": "Maintenance mode updated",
+        "status": maintenance_status_payload(),
+    }
 
 
 @app.get("/healthz")

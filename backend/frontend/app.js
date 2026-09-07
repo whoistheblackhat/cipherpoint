@@ -3831,11 +3831,20 @@ async function loadFullLeaderboard() {
     const totalEl = safeGetById('totalAnalysts');
 
     const myId = currentUser?.id || null;
+    const me = myId ? leaderboard.find((u) => Number(u.user_id) === Number(myId)) : null;
 
-    if (myId && currentUser) {
-      if (yourRankEl) yourRankEl.textContent = '#' + (currentUser.leaderboard_rank || '—');
+    if (me) {
+      if (yourRankEl) yourRankEl.textContent = `#${me.rank}`;
+      if (yourPointsEl) yourPointsEl.textContent = Number(me.rank_points).toLocaleString();
+      if (yourSolvesEl) yourSolvesEl.textContent = Number(me.solved_count).toLocaleString();
+    } else if (myId && currentUser) {
+      if (yourRankEl) yourRankEl.textContent = '—';
       if (yourPointsEl) yourPointsEl.textContent = Number(currentUser.rank_points || 0).toLocaleString();
       if (yourSolvesEl) yourSolvesEl.textContent = Number(currentUser.solved_count || 0).toLocaleString();
+    } else if (yourRankEl) {
+      yourRankEl.textContent = '—';
+      if (yourPointsEl) yourPointsEl.textContent = '0';
+      if (yourSolvesEl) yourSolvesEl.textContent = '0';
     }
 
     if (totalEl) totalEl.textContent = leaderboard.length;

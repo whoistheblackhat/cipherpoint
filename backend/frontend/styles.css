@@ -3514,6 +3514,46 @@ body[data-page="signup"] > canvas#networkCanvas {
   color: var(--primary);
 }
 
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-btn {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.45rem 0.9rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.filter-btn:hover {
+  background: rgba(255,255,255,0.06);
+  color: var(--text);
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
+.filter-btn.active {
+  background: linear-gradient(135deg, rgba(91, 179, 255, 0.18), rgba(109, 224, 208, 0.12));
+  color: var(--text);
+  border-color: rgba(91, 179, 255, 0.35);
+}
+
 .leaderboard-card {
   background: linear-gradient(180deg, rgba(17, 27, 44, 1), rgba(9, 15, 28, 1));
   border: 1px solid var(--line);

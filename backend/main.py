@@ -3648,13 +3648,31 @@ async def serve_sitemap(db: Session = Depends(get_db)):
 
     body = ['<?xml version="1.0" encoding="UTF-8"?>']
     body.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
+
+    def _xml_escape(s: str) -> str:
+        """Escape characters that would break XML or, more importantly,
+        allow attackers to inject sitemap content. SITE_BASE_URL is
+        admin-controlled via env, but defense in depth is cheap."""
+        return (
+            s.replace("&", "&amp;")
+             .replace("<", "&lt;")
+             .replace(">", "&gt;")
+             .replace('"', "&quot;")
+             .replace("'", "&apos;")
+        )
+
     for path, last_mod, priority in urls:
         # Sitemap URLs must be absolute and percent-encoded. We
         # intentionally use the dashboard anchor (e.g. /dashboard.html#challenge-3)
         # so we don't have to invent a public detail URL.
+        loc = f"{SITE_BASE_URL}{path}"
+        # Strip the fragment from the canonical loc and put it in a
+        # dedicated <xhtml:link rel="alternate"> tag... actually we
+        # keep this simple: just escape the URL so a malicious
+        # SITE_BASE_URL can't break out of the XML.
         body.append("  <url>")
-        body.append(f"    <loc>{SITE_BASE_URL}{path}</loc>")
-        body.append(f"    <lastmod>{last_mod}</lastmod>")
+        body.append(f"    <loc>{_xml_escape(loc)}</loc>")
+        body.append(f"    <lastmod>{_xml_escape(last_mod)}</lastmod>")
         body.append(f"    <priority>{priority}</priority>")
         body.append("  </url>")
     body.append("</urlset>")

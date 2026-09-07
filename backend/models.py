@@ -183,3 +183,39 @@ class Comment(Base):
     challenge = relationship("Challenge", backref="comments")
     author = relationship("User")
     parent = relationship("Comment", remote_side=[id], backref="replies")
+
+
+class RevokedToken(Base):
+    """JWT revocation list. When a user is banned or logs out, we add
+    the token's unique `jti` (JWT ID) here. The middleware checks this
+    table on every request so banned users are kicked out immediately
+    instead of waiting for token expiry."""
+    __tablename__ = "revoked_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    jti = Column(String, nullable=False, unique=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    revoked_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    reason = Column(String, nullable=True)
+
+    def is_expired(self) -> bool:
+        """Revocation records for tokens that are already past their exp
+        can be cleaned up safely without losing security guarantees."""
+        return self.expires_at <= datetime.utcnow()
+
+
+class ActiveToken(Base):
+    """Tracks JWTs that have been issued so they can be revoked
+    individually (logout) or in bulk (user banned). Each row mirrors
+    a single issued token's `jti` and the user who owns it."""
+    __tablename__ = "active_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    jti = Column(String, nullable=False, unique=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    issued_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    # 'access' = short-lived, 'refresh' = long-lived. The refresh
+    # endpoint rejects anything that isn't typ=refresh.
+    token_type = Column(String, default="access", nullable=False)

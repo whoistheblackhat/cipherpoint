@@ -122,8 +122,19 @@
     await loadFlaggedList();
     await loadModerationList();
 
-    $('adminLogout').addEventListener('click', (e) => {
+    $('adminLogout').addEventListener('click', async (e) => {
       e.preventDefault();
+      const t = token();
+      if (t) {
+        try {
+          await fetch(API_BASE + '/auth/logout', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${t}` }
+          });
+        } catch (err) {
+          console.warn('admin logout server call failed:', err);
+        }
+      }
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       window.location.href = 'login.html';

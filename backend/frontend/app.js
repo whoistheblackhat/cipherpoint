@@ -995,7 +995,22 @@ async function loadUser() {
   }
 }
 
-function logout() {
+async function logout() {
+  const token = localStorage.getItem('token');
+  // Best-effort server-side revocation. We don't block logout on a
+  // failed request: the local token is being thrown away regardless,
+  // and we'd rather the user not see an error toast for what is
+  // already a "you are now signed out" operation.
+  if (token) {
+    try {
+      await fetch(`${API_BASE_URL}/auth/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    } catch (err) {
+      console.warn('Server logout failed (continuing anyway):', err);
+    }
+  }
   currentUser = null;
   localStorage.removeItem('token');
   localStorage.removeItem('user');

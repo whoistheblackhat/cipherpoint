@@ -33,23 +33,31 @@ from sqlalchemy import text, func
 from sqlalchemy.exc import IntegrityError
 
 from database import init_db, get_db, SessionLocal
-from models import User, Challenge, SolvedChallenge, UnlockedHint, ChallengeReport, UserBan, Comment
+from models import User, Challenge, SolvedChallenge, UnlockedHint, ChallengeReport, UserBan, Comment, RevokedToken, ActiveToken
 from telegram_proxy import get_telegram_file, upload_media_to_channel, validate_media_duration, send_telegram_message, send_telegram_photo_with_buttons, start_admin_bot_polling, TELEGRAM_ADMIN_CHAT_ID, TELEGRAM_ADMIN_BOT_TOKEN, send_user_notification, TELEGRAM_REPORT_BOT_TOKEN, get_bot_health
 
 load_dotenv()
 
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
+SECRET_KEY = os.getenv("SECRET_KEY", "").strip()
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 15   # short-lived access token
+REFRESH_TOKEN_EXPIRE_DAYS = 7      # long-lived refresh token
 
 ENV = os.getenv("ENV", "dev").lower()
 IS_PRODUCTION = ENV == "production"
 
-if IS_PRODUCTION and (not SECRET_KEY or SECRET_KEY.startswith("your-secret-key")):
-    raise RuntimeError("SECRET_KEY must be set in production environment")
+if IS_PRODUCTION and (not SECRET_KEY or SECRET_KEY == "your-secret-key-change-in-production"):
+    raise RuntimeError("SECRET_KEY must be set to a strong random value in production environment")
 
-if not SECRET_KEY or SECRET_KEY.startswith("your-secret-key"):
-    print("[WARN] Using insecure default SECRET_KEY. Set a real one in .env for production.")
+if not SECRET_KEY or SECRET_KEY == "your-secret-key-change-in-production":
+    # Dev only: auto-generate a per-process secret. This is safe because
+    # tokens issued by one process shouldn't be verified by another during
+    # development. In production we fail-fast above.
+    import secrets as _secrets
+    SECRET_KEY = _secrets.token_urlsafe(64)
+    print("[WARN] Using auto-generated SECRET_KEY for development. "
+          "All tokens will be invalidated on every restart. "
+          "Set SECRET_KEY in .env for stable dev sessions.")
 
 TURNSTILE_SITE_KEY = os.getenv("SITE_KEY", "").strip()
 TURNSTILE_SECRET_KEY = os.getenv("CLOUDFLARE_SECRET_KEY", "").strip()
@@ -677,30 +685,124 @@ from security import (
     COMMON_PASSWORDS,
 )
 
-def create_access_token(data: dict):
-    """Create JWT access token"""
+def create_access_token(data: dict, expires_minutes: int = None, token_type: str = "access"):
+    """Create JWT access or refresh token with a unique jti for revocation.
+
+    Args:
+        data: claims to include (must contain 'sub' for user id).
+        expires_minutes: override the default TTL; refresh tokens pass a
+            large value (days) and access tokens use ACCESS_TOKEN_EXPIRE_MINUTES.
+        token_type: 'access' or 'refresh'. The claim is read by the
+            refresh endpoint to reject access tokens being used as
+            refresh tokens (and vice-versa).
+    """
+    import secrets
     to_encode = data.copy()
     if 'sub' in to_encode and not isinstance(to_encode['sub'], str):
         to_encode['sub'] = str(to_encode['sub'])
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
+    if expires_minutes is None:
+        expires_minutes = ACCESS_TOKEN_EXPIRE_MINUTES
+    expire = datetime.utcnow() + timedelta(minutes=expires_minutes)
+    to_encode.update({
+        "exp": expire,
+        "iat": datetime.utcnow(),
+        "jti": secrets.token_urlsafe(16),  # unique ID for blacklist lookup
+        "typ": token_type,
+    })
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-def verify_token(authorization: Optional[str] = Header(None)):
-    """Verify JWT token from Authorization header"""
+
+def issue_token(db: Session, user_id: int) -> str:
+    """Create a short-lived access JWT and register it in `active_tokens`
+    so it can be revoked later (e.g. on user ban or explicit logout)."""
+    token = create_access_token(data={"sub": user_id}, token_type="access")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_exp": False})
+        jti = payload.get("jti")
+        exp = datetime.utcfromtimestamp(payload.get("exp"))
+        if jti:
+            db.add(ActiveToken(jti=jti, user_id=user_id, expires_at=exp, token_type="access"))
+            db.commit()
+    except Exception as exc:
+        print(f"[auth] failed to register active token for user {user_id}: {exc}")
+        db.rollback()
+    return token
+
+
+def issue_token_pair(db: Session, user_id: int):
+    """Return (access_token, refresh_token) for the user. Both are
+    tracked in `active_tokens` so they can be revoked individually."""
+    access = create_access_token(data={"sub": user_id}, token_type="access")
+    refresh = create_access_token(
+        data={"sub": user_id},
+        expires_minutes=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60,
+        token_type="refresh",
+    )
+    try:
+        for token, ttype in ((access, "access"), (refresh, "refresh")):
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_exp": False})
+            jti = payload.get("jti")
+            exp = datetime.utcfromtimestamp(payload.get("exp"))
+            if jti:
+                db.add(ActiveToken(jti=jti, user_id=user_id, expires_at=exp, token_type=ttype))
+        db.commit()
+    except Exception as exc:
+        print(f"[auth] failed to register token pair for user {user_id}: {exc}")
+        db.rollback()
+    return access, refresh
+
+
+def revoke_user_tokens(db: Session, user_id: int, reason: str = "admin_action") -> int:
+    """Move every active token for a user into the revocation list.
+    Returns the number of tokens that were revoked. Expired tokens are
+    pruned at the same time so the table doesn't grow unbounded."""
+    now = datetime.utcnow()
+    # Cleanup: drop already-expired active rows
+    db.query(ActiveToken).filter(ActiveToken.expires_at <= now).delete()
+    # Fetch currently-active tokens for the user
+    active = db.query(ActiveToken).filter(ActiveToken.user_id == user_id, ActiveToken.expires_at > now).all()
+    count = 0
+    for row in active:
+        if not db.query(RevokedToken).filter(RevokedToken.jti == row.jti).first():
+            db.add(RevokedToken(
+                jti=row.jti,
+                user_id=user_id,
+                revoked_at=now,
+                expires_at=row.expires_at,
+                reason=reason,
+            ))
+            count += 1
+    # Remove the now-revoked rows from active_tokens so verify_token
+    # only needs to check the revocation list.
+    db.query(ActiveToken).filter(ActiveToken.user_id == user_id, ActiveToken.expires_at > now).delete()
+    db.commit()
+    return count
+
+def verify_token(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
+    """Verify JWT token from Authorization header. Also rejects tokens
+    whose `jti` is in the revocation list (banned users, explicit logout)."""
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
-    
+
     try:
         scheme, token = authorization.split()
         if scheme.lower() != "bearer":
             raise HTTPException(status_code=401, detail="Invalid authorization scheme")
-        
+
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
+
+        # Revocation check: see if the token's jti has been blacklisted
+        # (e.g. user was banned, password changed, or explicitly logged out).
+        jti = payload.get("jti")
+        if jti:
+            revoked = db.query(RevokedToken).filter(RevokedToken.jti == jti).first()
+            if revoked and not revoked.is_expired():
+                raise HTTPException(status_code=401, detail="Token has been revoked")
+
         return int(user_id)
     except ValueError:
         raise HTTPException(status_code=401, detail="Invalid authorization format")
@@ -985,7 +1087,7 @@ def signup(payload: UserSignupRequest, request: Request, db: Session = Depends(g
         db.rollback()
         raise
 
-    access_token = create_access_token(data={"sub": new_user.id})
+    access_token = issue_token(db, new_user.id)
     return {
         "id": new_user.id,
         "username": new_user.username,
@@ -1064,12 +1166,36 @@ def login(payload: UserLoginRequest, request: Request, db: Session = Depends(get
             headers={"Retry-After": str(secs_left)},
         )
 
+    # Password must be verified BEFORE we issue any tokens. Otherwise
+    # a wrong password attempt would still create a row in active_tokens
+    # (and on success, the wrong user would be logged in).
     if not verify_password(payload.password, user.password_hash):
         record_failed_login(user)
         db.commit()
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     record_successful_login(user)
+
+    # Tokens are only issued once the password is confirmed correct.
+    access_token = issue_token(db, user.id)
+    refresh_token = create_access_token(
+        data={"sub": user.id},
+        expires_minutes=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60,
+        token_type="refresh",
+    )
+    # Register the refresh token in active_tokens for revocation tracking.
+    try:
+        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_exp": False})
+        db.add(ActiveToken(
+            jti=payload.get("jti"),
+            user_id=user.id,
+            expires_at=datetime.utcfromtimestamp(payload.get("exp")),
+            token_type="refresh",
+        ))
+        db.commit()
+    except Exception as exc:
+        print(f"[auth] failed to register refresh token: {exc}")
+        db.rollback()
     db.commit()
     rate_limit_reset(f"login_user:{user.id}")
 
@@ -1101,8 +1227,8 @@ def login(payload: UserLoginRequest, request: Request, db: Session = Depends(get
         pass
     
     db.commit()
-    
-    access_token = create_access_token(data={"sub": user.id})
+
+    access_token = issue_token(db, user.id)
     return {
         "id": user.id,
         "username": user.username,
@@ -1112,6 +1238,7 @@ def login(payload: UserLoginRequest, request: Request, db: Session = Depends(get
         "is_admin": bool(user.is_admin),
         "solved_count": db.query(SolvedChallenge).filter(SolvedChallenge.user_id == user.id).count(),
         "access_token": access_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
         "flagged_for_review": bool(user.flagged_for_review),
     }
@@ -1264,7 +1391,7 @@ def login_otp_verify(payload: OtpVerifyRequest, request: Request, db: Session = 
     user.locked_until = None
     db.commit()
 
-    access_token = create_access_token(data={"sub": user.id})
+    access_token = issue_token(db, user.id)
     return {
         "id": user.id,
         "username": user.username,
@@ -1276,6 +1403,126 @@ def login_otp_verify(payload: OtpVerifyRequest, request: Request, db: Session = 
         "access_token": access_token,
         "token_type": "bearer"
     }
+
+
+@app.post("/api/auth/refresh")
+def refresh_token(payload: dict, db: Session = Depends(get_db)):
+    """Exchange a valid refresh token for a new access token (and a
+    rotated refresh token). Implements refresh-token rotation: every
+    successful refresh revokes the old refresh token's jti, so a
+    stolen refresh token can only be used once. This is the standard
+    defense against refresh-token theft replay attacks.
+
+    Request body: {"refresh_token": "..."}
+    """
+    import secrets
+    supplied = (payload or {}).get("refresh_token")
+    if not supplied:
+        raise HTTPException(status_code=400, detail="refresh_token is required")
+    try:
+        decoded = jwt.decode(supplied, SECRET_KEY, algorithms=[ALGORITHM])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Refresh token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    if decoded.get("typ") != "refresh":
+        raise HTTPException(status_code=401, detail="Not a refresh token")
+
+    jti = decoded.get("jti")
+    user_id = decoded.get("sub")
+    if not jti or not user_id:
+        raise HTTPException(status_code=401, detail="Malformed refresh token")
+
+    # Reject already-rotated/revoked refresh tokens
+    if db.query(RevokedToken).filter(RevokedToken.jti == jti).first():
+        raise HTTPException(status_code=401, detail="Refresh token has been revoked")
+    # Make sure the user is still in good standing
+    user = db.query(User).filter(User.id == int(user_id)).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    ensure_user_not_banned(user.id, db)
+
+    # Revoke the old refresh token
+    try:
+        old_exp = datetime.utcfromtimestamp(decoded.get("exp"))
+        db.add(RevokedToken(
+            jti=jti,
+            user_id=user.id,
+            revoked_at=datetime.utcnow(),
+            expires_at=old_exp,
+            reason="refresh_rotation",
+        ))
+        db.query(ActiveToken).filter(ActiveToken.jti == jti).delete()
+        db.commit()
+    except Exception as exc:
+        print(f"[auth] failed to revoke rotated refresh token: {exc}")
+        db.rollback()
+
+    # Issue a fresh pair
+    new_access = issue_token(db, user.id)
+    new_refresh = create_access_token(
+        data={"sub": user.id},
+        expires_minutes=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60,
+        token_type="refresh",
+    )
+    try:
+        payload_n = jwt.decode(new_refresh, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_exp": False})
+        db.add(ActiveToken(
+            jti=payload_n.get("jti"),
+            user_id=user.id,
+            expires_at=datetime.utcfromtimestamp(payload_n.get("exp")),
+            token_type="refresh",
+        ))
+        db.commit()
+    except Exception as exc:
+        print(f"[auth] failed to register rotated refresh token: {exc}")
+        db.rollback()
+
+    return {
+        "access_token": new_access,
+        "refresh_token": new_refresh,
+        "token_type": "bearer",
+    }
+
+
+@app.post("/api/auth/logout")
+def logout(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
+    """Revoke the JWT used for this request. Other devices/sessions
+    remain valid (logout is per-token, not per-user). Idempotent:
+    if the token is already revoked, the endpoint still returns 200
+    so the client can clean up its local state without an error."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+    try:
+        scheme, token = authorization.split()
+        if scheme.lower() != "bearer":
+            raise HTTPException(status_code=401, detail="Invalid authorization scheme")
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except (ValueError, jwt.InvalidTokenError):
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    jti = payload.get("jti")
+    user_id = payload.get("sub")
+    exp = datetime.utcfromtimestamp(payload.get("exp", 0))
+    if not jti:
+        # Older tokens issued before jti was added can't be individually
+        # revoked, so we fall back to revoking ALL of this user's tokens.
+        revoked = revoke_user_tokens(db, int(user_id), reason="logout_no_jti") if user_id else 0
+        return {"message": "Logged out", "tokens_revoked": revoked}
+
+    if not db.query(RevokedToken).filter(RevokedToken.jti == jti).first():
+        db.add(RevokedToken(
+            jti=jti,
+            user_id=int(user_id) if user_id else None,
+            revoked_at=datetime.utcnow(),
+            expires_at=exp,
+            reason="logout",
+        ))
+    # Also remove from active_tokens if present.
+    db.query(ActiveToken).filter(ActiveToken.jti == jti).delete()
+    db.commit()
+    return {"message": "Logged out"}
 
 
 @app.get("/api/auth/me")
@@ -1511,12 +1758,15 @@ def change_password(payload: PasswordChangeRequest, user_id: int = Depends(verif
     # Wipe any outstanding password-reset tokens so they can't be reused.
     user.reset_token = None
     user.reset_token_expires = None
+    # Invalidate all active sessions. Anyone holding an old token (e.g.
+    # a thief who stole the previous password) is now locked out on the
+    # next request, even before the JWT's 30-minute exp would expire.
+    revoke_user_tokens(db, user.id, reason="password_changed")
     db.commit()
 
     if user.telegram_chat_id and user.telegram_notifications:
         send_user_notification(
-            user.telegram_chat_id,
-            f"🔐 <b>Password updated</b>\n\nHello <b>{escape_html(user.username)}</b>, your CipherPoint password was successfully changed."
+            user.telegram_chat_id,            f"🔐 <b>Password updated</b>\n\nHello <b>{escape_html(user.username)}</b>, your CipherPoint password was successfully changed."
         )
 
     return {"message": "Password updated successfully"}
@@ -1689,6 +1939,11 @@ def admin_ban_user(
         )
         db.add(ban)
 
+    # Kick the user out of every active session immediately. Without
+    # this, their existing JWT would still be valid for up to 30 minutes
+    # after the ban was issued, leaving a security window.
+    revoked = revoke_user_tokens(db, target.id, reason=f"banned: {reason[:120]}")
+
     db.commit()
 
     # Notify via Telegram if linked
@@ -1773,9 +2028,13 @@ def admin_list_flagged_users(
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
+class AdminUnflagRequest(BaseModel):
+    user_id: int
+
+
 @app.post("/api/admin/users/unflag")
 def admin_unflag_user(
-    payload: AdminBanRequest,
+    payload: AdminUnflagRequest,
     admin_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):

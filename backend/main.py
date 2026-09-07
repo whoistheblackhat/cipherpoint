@@ -3591,6 +3591,80 @@ _BUNDLED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend")
 _PARENT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend")
 FRONTEND_DIR = _BUNDLED if os.path.isdir(_BUNDLED) else _PARENT
 
+# Public base URL used in sitemap.xml. Override via env if running
+# behind a different domain (e.g. staging vs production).
+SITE_BASE_URL = os.getenv("SITE_BASE_URL", "https://cipherpoint.linkpc.net").rstrip("/")
+
+
+@app.get("/robots.txt", include_in_schema=False)
+async def serve_robots():
+    """Serve robots.txt. We block all admin/authenticated areas from
+    crawlers but allow public marketing pages so Google can index
+    them. Cached for 1 hour since the rules rarely change."""
+    file_path = os.path.join(FRONTEND_DIR, "robots.txt")
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="robots.txt not found")
+    return FileResponse(
+        file_path,
+        media_type="text/plain; charset=utf-8",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+async def serve_sitemap(db: Session = Depends(get_db)):
+    """Dynamically generate sitemap.xml so newly published challenges
+    show up in search engines without a redeploy. Cached for 10 min
+    so the sitemap doesn't regenerate on every crawler hit."""
+    from fastapi.responses import Response
+    # Try to read challenges from the DB. If the DB is unreachable
+    # (e.g. during a deploy) we fall back to the static file so
+    # search engines still get a valid sitemap.
+    today = datetime.utcnow().date().isoformat()
+    urls: list[tuple[str, str, float]] = [
+        ("/", today, 1.0),
+        ("/login.html", today, 0.9),
+        ("/signup.html", today, 0.9),
+        ("/about.html", today, 0.8),
+        ("/contact.html", today, 0.6),
+        ("/terms.html", today, 0.4),
+        ("/privacy.html", today, 0.4),
+        ("/leaderboard.html", today, 0.7),
+    ]
+    try:
+        # Include public, approved challenges so each case has its
+        # own indexable URL. We point at the dashboard anchor so the
+        # detail modal opens with that challenge selected.
+        challenges = db.query(Challenge).filter(Challenge.status == "approved").all()
+        for ch in challenges:
+            last_mod = ch.created_at.date().isoformat() if ch.created_at else today
+            urls.append((f"/dashboard.html#challenge-{ch.id}", last_mod, 0.7))
+    except Exception as exc:
+        print(f"[sitemap] DB query failed, serving static fallback: {exc}")
+        static = os.path.join(FRONTEND_DIR, "sitemap.xml")
+        if os.path.isfile(static):
+            with open(static, "r", encoding="utf-8") as fh:
+                return Response(content=fh.read(), media_type="application/xml")
+
+    body = ['<?xml version="1.0" encoding="UTF-8"?>']
+    body.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
+    for path, last_mod, priority in urls:
+        # Sitemap URLs must be absolute and percent-encoded. We
+        # intentionally use the dashboard anchor (e.g. /dashboard.html#challenge-3)
+        # so we don't have to invent a public detail URL.
+        body.append("  <url>")
+        body.append(f"    <loc>{SITE_BASE_URL}{path}</loc>")
+        body.append(f"    <lastmod>{last_mod}</lastmod>")
+        body.append(f"    <priority>{priority}</priority>")
+        body.append("  </url>")
+    body.append("</urlset>")
+    xml = "\n".join(body) + "\n"
+    return Response(
+        content=xml,
+        media_type="application/xml",
+        headers={"Cache-Control": "public, max-age=600"},
+    )
+
 if os.path.isdir(FRONTEND_DIR):
     # Mount static assets (JS, CSS, images) at /static
     app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
@@ -3633,6 +3707,39 @@ if os.path.isdir(FRONTEND_DIR):
         return FileResponse(
             file_path,
             headers={"Cache-Control": "public, max-age=300, must-revalidate"},
+        )
+
+    # Whitelist for non-HTML static files we serve (Google site
+    # verification, etc.). Anything else that isn't matched below
+    # falls through to the 404 catch-all.
+    @app.get("/google{site_token}.html", include_in_schema=False)
+    async def serve_google_verification(site_token: str, request: Request):
+        """Serve a Google Search Console verification file.
+
+        Google asks site owners to upload a file whose name is
+        `google<token>.html` containing a single meta line. We
+        accept any token but only serve a file that exists in the
+        frontend directory — nothing else gets exposed. The
+        path-traversal check below is the real protection; the
+        path parameter is just a routing convenience.
+        """
+        # Reconstruct the filename from the route param
+        filename = f"google{site_token}.html"
+        # Strict token shape: only the chars Google itself uses
+        if not site_token or not all(c.isalnum() for c in site_token):
+            raise HTTPException(status_code=404, detail="Not found")
+        file_path = os.path.join(FRONTEND_DIR, filename)
+        # Path traversal guard: ensure the resolved path is still
+        # under FRONTEND_DIR (e.g. ..%2F wouldn't match the route
+        # param regex above, but defense in depth never hurts).
+        if not os.path.abspath(file_path).startswith(os.path.abspath(FRONTEND_DIR)):
+            raise HTTPException(status_code=400, detail="Invalid path")
+        if not os.path.isfile(file_path):
+            raise HTTPException(status_code=404, detail="Not found")
+        return FileResponse(
+            file_path,
+            media_type="text/html; charset=utf-8",
+            headers={"Cache-Control": "public, max-age=3600"},
         )
 
     # Keep deploy-sensitive assets revalidating so clients receive frontend fixes.

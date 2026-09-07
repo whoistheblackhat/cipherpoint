@@ -3760,6 +3760,35 @@ if os.path.isdir(FRONTEND_DIR):
             headers={"Cache-Control": "public, max-age=3600"},
         )
 
+    @app.get("/yandex_{site_token}.html", include_in_schema=False)
+    async def serve_yandex_verification(site_token: str, request: Request):
+        """Serve a Yandex Webmaster verification file.
+
+        Yandex uses the format `yandex_<token>.html` with a small
+        HTML body containing the verification string. We follow the
+        same security model as the Google route:
+          - Token restricted to hex / alphanumeric (Yandex tokens are
+            always hex today, but alphanumeric keeps us future-proof).
+          - Path resolution checked against FRONTEND_DIR.
+          - Only the exact file is served; no other static files are
+            exposed through this route.
+        """
+        # The route prefix uses `_` (matches Yandex's exact format).
+        # The token itself is what we validate.
+        if not site_token or not all(c.isalnum() for c in site_token) or len(site_token) > 64:
+            raise HTTPException(status_code=404, detail="Not found")
+        filename = f"yandex_{site_token}.html"
+        file_path = os.path.join(FRONTEND_DIR, filename)
+        if not os.path.abspath(file_path).startswith(os.path.abspath(FRONTEND_DIR)):
+            raise HTTPException(status_code=400, detail="Invalid path")
+        if not os.path.isfile(file_path):
+            raise HTTPException(status_code=404, detail="Not found")
+        return FileResponse(
+            file_path,
+            media_type="text/html; charset=utf-8",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+
     # Keep deploy-sensitive assets revalidating so clients receive frontend fixes.
     @app.get("/app.js", include_in_schema=False)
     @app.get("/admin.js", include_in_schema=False)

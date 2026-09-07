@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin.html
+Disallow: /settings.html
+Disallow: /maintenance.html
+Disallow: /profile.html
+Disallow: /dashboard.html
+Disallow: /community.html
+Disallow: /challenge_detail.html
+Disallow: /leaderboard.html
+Disallow: /notifications.html
+
+# Sitemap location
+Sitemap: https://cipherpoint.linkpc.net/sitemap.xml

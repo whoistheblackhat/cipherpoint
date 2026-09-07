@@ -3763,6 +3763,20 @@ if os.path.isdir(FRONTEND_DIR):
             headers={"Cache-Control": "public, max-age=86400"},
         )
 
+    @app.get("/og-image.png", include_in_schema=False)
+    async def serve_og_image():
+        """Open Graph / Twitter card preview image. Social media crawlers
+        fetch this when generating link previews. Cached aggressively
+        since the image only changes on a release."""
+        file_path = os.path.join(FRONTEND_DIR, "og-image.png")
+        if not os.path.isfile(file_path):
+            raise HTTPException(status_code=404, detail="og-image.png not found")
+        return FileResponse(
+            file_path,
+            media_type="image/png",
+            headers={"Cache-Control": "public, max-age=604800"},  # 7 days
+        )
+
 else:
     print(f"[WARN] Frontend directory not found at {_BUNDLED} or {_PARENT}")
 

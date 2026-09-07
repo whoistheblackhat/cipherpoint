@@ -335,6 +335,8 @@ function showAuthNotice(message) {
   }
 }
 
+const LOADING_MAX_MS = 8000;
+
 function showLoadingScreen() {
   if (document.getElementById('cyberLoadingScreen')) return;
 
@@ -352,6 +354,11 @@ function showLoadingScreen() {
     <div class="cyber-loader-title">ESTABLISHING SECURE LINK</div>
     <div class="cyber-loader-status"><span></span><span></span><span></span></div>
     <div class="cyber-loader-subtitle">Decrypting intelligence workspace...</div>
+    <div class="cyber-loader-error">
+      <i class="fa-solid fa-triangle-exclamation"></i>
+      <span>Connection timed out</span>
+      <span style="font-weight:400;font-size:0.78rem;color:var(--muted);">Check your network and retry</span>
+    </div>
   `;
   document.body.appendChild(screen);
 }
@@ -360,22 +367,56 @@ function hideLoadingScreen() {
   const screen = document.getElementById('cyberLoadingScreen');
   if (!screen) return;
   const startedAt = Number(screen.dataset.startedAt || Date.now());
-  const remaining = Math.max(0, 450 - (Date.now() - startedAt));
+  const remaining = Math.max(0, 420 - (Date.now() - startedAt));
   window.setTimeout(() => {
     screen.classList.add('is-hidden');
-    window.setTimeout(() => screen.remove(), 280);
+    window.setTimeout(() => screen.remove(), 320);
   }, remaining);
+}
+
+function showLoadingError() {
+  const screen = document.getElementById('cyberLoadingScreen');
+  if (!screen) return;
+  screen.classList.add('is-error');
+  screen.dataset.startedAt = String(Date.now());
+  const remaining = Math.max(0, 420 - (Date.now() - Number(screen.dataset.startedAt || Date.now())));
+  window.setTimeout(() => {
+    screen.classList.add('is-hidden');
+    window.setTimeout(() => screen.remove(), 320);
+  }, Math.max(remaining, 2000));
+}
+
+async function withLoadingTimeout(promise) {
+  const timeout = new Promise((_, reject) => {
+    window.setTimeout(() => reject(new Error('LOADING_TIMEOUT')), LOADING_MAX_MS);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } catch (error) {
+    if (error.message === 'LOADING_TIMEOUT') {
+      showLoadingError();
+      showToast('Connection timed out. Please check your network.', 'error');
+    }
+    throw error;
+  }
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
   showLoadingScreen();
   try {
-    await loadAppConfig();
-    renderTurnstileWidgets();
+    await withLoadingTimeout((async () => {
+      await loadAppConfig();
+      renderTurnstileWidgets();
+      await initializePage();
+    })());
   } catch (error) {
-    console.warn('Failed to init app config', error);
+    console.warn('App init failed:', error);
+    if (!document.getElementById('cyberLoadingScreen')) {
+      showLoadingError();
+    }
+  } finally {
+    hideLoadingScreen();
   }
-  initializePage().finally(hideLoadingScreen);
 });
 
 async function initializePage() {
@@ -3790,27 +3831,24 @@ async function loadFullLeaderboard() {
     const totalEl = safeGetById('totalAnalysts');
 
     const myId = currentUser?.id || null;
-    const me = myId ? leaderboard.find((u) => Number(u.user_id) === Number(myId)) : null;
 
-    if (me) {
-      if (yourRankEl) yourRankEl.textContent = `#${me.rank}`;
-      if (yourPointsEl) yourPointsEl.textContent = me.rank_points;
-      if (yourSolvesEl) yourSolvesEl.textContent = me.solved_count;
-    } else if (yourRankEl) {
-      yourRankEl.textContent = '—';
-      if (yourPointsEl) yourPointsEl.textContent = '—';
-      if (yourSolvesEl) yourSolvesEl.textContent = '—';
+    if (myId && currentUser) {
+      if (yourRankEl) yourRankEl.textContent = '#' + (currentUser.leaderboard_rank || '—');
+      if (yourPointsEl) yourPointsEl.textContent = Number(currentUser.rank_points || 0).toLocaleString();
+      if (yourSolvesEl) yourSolvesEl.textContent = Number(currentUser.solved_count || 0).toLocaleString();
     }
+
     if (totalEl) totalEl.textContent = leaderboard.length;
 
-    if (!leaderboard.length) {
+    if (!leaderboard.length && !myId) {
       body.innerHTML = '<tr><td colspan="5" class="comments-empty">No analysts yet.</td></tr>';
       return;
     }
 
-    body.innerHTML = leaderboard.map((user) => {
+    const meInList = myId ? leaderboard.find((u) => Number(u.user_id) === Number(myId)) : null;
+    const rows = leaderboard.map((user) => {
       const rankClass = user.rank === 1 ? 'top1' : user.rank === 2 ? 'top2' : user.rank === 3 ? 'top3' : '';
-      const rankLabel = user.rank <= 3 ? ['🥇','🥈','🥉'][user.rank - 1] : `#${user.rank}`;
+      const rankLabel = user.rank <= 3 ? ['\uD83C\uDFC7','\uD83C\uDFC8','\uD83C\uDFC9'][user.rank - 1] : `#${user.rank}`;
       const initial = (user.username || '?').charAt(0).toUpperCase();
       const isYou = Number(user.user_id) === Number(myId);
       return `
@@ -3825,12 +3863,35 @@ async function loadFullLeaderboard() {
               </div>
             </div>
           </td>
-          <td>${user.rank_points} pts</td>
-          <td>${user.solved_count}</td>
+          <td>${Number(user.rank_points).toLocaleString()} pts</td>
+          <td>${Number(user.solved_count).toLocaleString()}</td>
           <td><div class="badge-stack">${renderBadgePills(user.badges)}</div></td>
         </tr>
       `;
     }).join('');
+
+    if (myId && !meInList && currentUser) {
+      const youRow = `
+        <tr class="you you-separator">
+          <td><span class="rank-pill you-rank">\uD83D\uDC64</span></td>
+          <td>
+            <div class="user-cell">
+              <span class="user-avatar">${escapeHtml((currentUser.username || '?').charAt(0).toUpperCase())}</span>
+              <div>
+                <strong>${escapeHtml(currentUser.username)}</strong>
+                <div class="meta-label">You</div>
+              </div>
+            </div>
+          </td>
+          <td>${Number(currentUser.rank_points || 0).toLocaleString()} pts</td>
+          <td>${Number(currentUser.solved_count || 0).toLocaleString()}</td>
+          <td><div class="badge-stack">${renderBadgePills([])}</div></td>
+        </tr>
+      `;
+      body.innerHTML = rows + youRow;
+    } else {
+      body.innerHTML = rows;
+    }
   } catch (error) {
     console.error('Error loading leaderboard page:', error);
     body.innerHTML = '<tr><td colspan="5" class="comments-empty">Unable to load leaderboard.</td></tr>';

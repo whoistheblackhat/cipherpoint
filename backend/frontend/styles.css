@@ -2770,11 +2770,12 @@ body[data-page="signup"] > canvas#networkCanvas {
   display: grid;
   place-items: center;
   align-content: center;
-  gap: 14px;
+  gap: 16px;
   background:
-    radial-gradient(circle at center, rgba(61, 142, 255, 0.12), transparent 32%),
+    radial-gradient(circle at 50% 40%, rgba(61, 142, 255, 0.14), transparent 34%),
+    radial-gradient(circle at 50% 60%, rgba(109, 224, 208, 0.08), transparent 40%),
     linear-gradient(180deg, #050c16 0%, #0b1728 100%);
-  transition: opacity 0.28s ease, visibility 0.28s ease;
+  transition: opacity 0.32s ease, visibility 0.32s ease;
 }
 
 .cyber-loading-screen::before,
@@ -2786,18 +2787,19 @@ body[data-page="signup"] > canvas#networkCanvas {
 }
 
 .cyber-loading-screen::before {
-  opacity: 0.22;
+  opacity: 0.18;
   background-image:
-    linear-gradient(rgba(109, 224, 208, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(109, 224, 208, 0.08) 1px, transparent 1px);
-  background-size: 34px 34px;
-  mask-image: radial-gradient(circle at center, black, transparent 72%);
+    linear-gradient(rgba(109, 224, 208, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(109, 224, 208, 0.1) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(circle at center, black, transparent 70%);
+  -webkit-mask-image: radial-gradient(circle at center, black, transparent 70%);
 }
 
 .cyber-loading-screen::after {
-  background: linear-gradient(transparent 48%, rgba(109, 224, 208, 0.08) 50%, transparent 52%);
-  background-size: 100% 12px;
-  animation: cyber-scan 2.6s linear infinite;
+  background: linear-gradient(transparent 46%, rgba(109, 224, 208, 0.1) 50%, transparent 54%);
+  background-size: 100% 14px;
+  animation: cyber-scan 2.4s linear infinite;
 }
 
 .cyber-loading-screen.is-hidden {
@@ -2805,98 +2807,151 @@ body[data-page="signup"] > canvas#networkCanvas {
   visibility: hidden;
 }
 
+.cyber-loading-screen.is-error {
+  background:
+    radial-gradient(circle at 50% 40%, rgba(255, 117, 111, 0.12), transparent 34%),
+    linear-gradient(180deg, #0c0505 0%, #1a0b0b 100%);
+}
+
+.cyber-loading-screen.is-error::before {
+  opacity: 0.14;
+  background-image:
+    linear-gradient(rgba(255, 117, 111, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 117, 111, 0.12) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(circle at center, black, transparent 70%);
+  -webkit-mask-image: radial-gradient(circle at center, black, transparent 70%);
+}
+
+.cyber-loading-screen.is-error::after {
+  background: linear-gradient(transparent 46%, rgba(255, 117, 111, 0.1) 50%, transparent 54%);
+  background-size: 100% 14px;
+  animation: cyber-scan-error 2.4s linear infinite;
+}
+
+.cyber-loader-error {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--danger);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: center;
+  padding: 18px;
+}
+
+.cyber-loader-error i {
+  font-size: 2rem;
+  margin-bottom: 4px;
+}
+
+.is-error .cyber-loader,
+.is-error .cyber-loader-title,
+.is-error .cyber-loader-status,
+.is-error .cyber-loader-subtitle {
+  display: none;
+}
+
+.is-error .cyber-loader-error {
+  display: flex;
+}
+
 .cyber-loader {
   position: relative;
   display: grid;
   place-items: center;
-  width: 92px;
-  height: 92px;
+  width: 96px;
+  height: 96px;
   color: var(--teal);
+  filter: drop-shadow(0 0 18px rgba(109, 224, 208, 0.18));
 }
 
 .cyber-loader-ring {
   position: absolute;
   inset: 0;
-  border: 1px solid rgba(109, 224, 208, 0.34);
+  border: 1.5px solid rgba(109, 224, 208, 0.32);
   border-top-color: var(--teal);
   border-right-color: var(--primary);
   border-radius: 50%;
-  animation: cyber-spin 1.1s linear infinite;
+  animation: cyber-spin 1.05s linear infinite;
 }
 
 .cyber-loader-ring::before,
 .cyber-loader-ring::after {
   position: absolute;
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--teal);
-  box-shadow: 0 0 14px var(--teal);
+  box-shadow: 0 0 16px var(--teal);
   content: "";
 }
 
 .cyber-loader-ring::before {
-  top: 8px;
-  right: 9px;
+  top: 6px;
+  right: 10px;
 }
 
 .cyber-loader-ring::after {
-  bottom: 8px;
-  left: 9px;
+  bottom: 6px;
+  left: 10px;
   background: var(--primary);
-  box-shadow: 0 0 14px var(--primary);
+  box-shadow: 0 0 16px var(--primary);
 }
 
 .cyber-loader-core {
   display: grid;
   place-items: center;
-  width: 58px;
-  height: 58px;
-  border: 1px solid rgba(237, 244, 255, 0.3);
-  border-radius: 18px;
-  background: rgba(16, 27, 45, 0.92);
+  width: 60px;
+  height: 60px;
+  border: 1px solid rgba(237, 244, 255, 0.28);
+  border-radius: 20px;
+  background: rgba(13, 23, 40, 0.94);
   color: var(--primary);
-  font-size: 1.35rem;
-  box-shadow: 0 0 28px rgba(61, 142, 255, 0.22);
-  animation: cyber-pulse 1.4s ease-in-out infinite;
+  font-size: 1.45rem;
+  box-shadow: 0 0 32px rgba(61, 142, 255, 0.25);
+  animation: cyber-pulse 1.35s ease-in-out infinite;
 }
 
 .cyber-loader-title {
   position: relative;
   color: var(--text);
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   font-weight: 800;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.22em;
   text-align: center;
+  text-shadow: 0 0 12px rgba(109, 224, 208, 0.25);
 }
 
 .cyber-loader-status {
   position: relative;
   display: flex;
-  gap: 7px;
+  gap: 8px;
 }
 
 .cyber-loader-status span {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--teal);
-  box-shadow: 0 0 10px var(--teal);
-  animation: cyber-blink 1.1s ease-in-out infinite;
+  box-shadow: 0 0 12px var(--teal);
+  animation: cyber-blink 1.05s ease-in-out infinite;
 }
 
 .cyber-loader-status span:nth-child(2) {
-  animation-delay: 0.18s;
+  animation-delay: 0.16s;
 }
 
 .cyber-loader-status span:nth-child(3) {
-  animation-delay: 0.36s;
+  animation-delay: 0.32s;
 }
 
 .cyber-loader-subtitle {
   position: relative;
   color: var(--muted);
   font-size: 0.78rem;
+  letter-spacing: 0.04em;
 }
 
 @keyframes cyber-spin {
@@ -2904,17 +2959,23 @@ body[data-page="signup"] > canvas#networkCanvas {
 }
 
 @keyframes cyber-pulse {
-  50% { transform: scale(0.92); opacity: 0.72; }
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.9); opacity: 0.7; }
 }
 
 @keyframes cyber-blink {
-  0%, 100% { opacity: 0.25; transform: scale(0.75); }
-  50% { opacity: 1; transform: scale(1); }
+  0%, 100% { opacity: 0.2; transform: scale(0.7); }
+  50% { opacity: 1; transform: scale(1.1); }
 }
 
 @keyframes cyber-scan {
-  from { transform: translateY(-12px); }
-  to { transform: translateY(12px); }
+  from { transform: translateY(-14px); }
+  to { transform: translateY(14px); }
+}
+
+@keyframes cyber-scan-error {
+  from { transform: translateY(-14px); }
+  to { transform: translateY(14px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3489,6 +3550,17 @@ body[data-page="signup"] > canvas#networkCanvas {
 
 .leaderboard-table tr.you td {
   background: rgba(91, 179, 255, 0.08);
+}
+
+.leaderboard-table tr.you-separator td {
+  border-top: 1px dashed rgba(148, 163, 184, 0.22);
+}
+
+.rank-pill.you-rank {
+  background: rgba(91, 179, 255, 0.12);
+  border-color: rgba(91, 179, 255, 0.35);
+  color: var(--primary);
+  font-size: 0.85rem;
 }
 
 .rank-pill {

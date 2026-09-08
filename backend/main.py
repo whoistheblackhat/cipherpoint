@@ -33,7 +33,7 @@ from sqlalchemy import text, func
 from sqlalchemy.exc import IntegrityError
 
 from database import init_db, get_db, SessionLocal
-from models import User, Challenge, SolvedChallenge, UnlockedHint, ChallengeReport, UserBan, Comment, RevokedToken, ActiveToken
+from models import User, Challenge, SolvedChallenge, UnlockedHint, ChallengeReport, UserBan, Comment, RevokedToken, ActiveToken, IntelArticle
 from telegram_proxy import get_telegram_file, upload_media_to_channel, validate_media_duration, send_telegram_message, send_telegram_photo_with_buttons, start_admin_bot_polling, TELEGRAM_ADMIN_CHAT_ID, TELEGRAM_ADMIN_BOT_TOKEN, send_user_notification, TELEGRAM_REPORT_BOT_TOKEN, get_bot_health
 
 load_dotenv()
@@ -424,7 +424,28 @@ class CommunityChallengeCreateRequest(BaseModel):
         extra = "allow"
 
 
-# Hard limits — these are not configurable per-user. They are absolute
+class IntelArticleCreateRequest(BaseModel):
+    title: str
+    category: str
+    content: str
+    summary: Optional[str] = None
+    telegram_file_id: Optional[str] = None
+    is_published: bool = False
+
+
+class IntelArticleUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    category: Optional[str] = None
+    content: Optional[str] = None
+    summary: Optional[str] = None
+    telegram_file_id: Optional[str] = None
+    is_published: Optional[bool] = None
+
+
+INTEL_TITLE_MAX = 200
+INTEL_CATEGORY_MAX = 60
+INTEL_CONTENT_MAX = 20000
+INTEL_SUMMARY_MAX = 500
 # bounds to prevent abuse (oversized DB rows, infinite-coin glitches,
 # etc.) and to keep the UI sane.
 CHALLENGE_TITLE_MAX = 120
@@ -3101,6 +3122,129 @@ def update_challenge(
     db.refresh(challenge)
     _cache_clear_prefix("challenges:")
     return {"message": "Challenge updated successfully.", "id": challenge.id}
+
+
+# ==================== INTEL VAULT ROUTES ====================
+
+@app.get("/api/intel-vault")
+def list_intel_articles(category: Optional[str] = None, db: Session = Depends(get_db)):
+    """Public list of published Intel Vault articles."""
+    query = db.query(IntelArticle).filter(IntelArticle.is_published == True)
+    if category:
+        query = query.filter(IntelArticle.category == category)
+    articles = query.order_by(IntelArticle.created_at.desc()).all()
+    return [
+        {
+            "id": a.id,
+            "title": a.title,
+            "category": a.category,
+            "summary": a.summary,
+            "telegram_file_id": a.telegram_file_id,
+            "author_id": a.author_id,
+            "created_at": a.created_at.isoformat() if a.created_at else None,
+            "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+        }
+        for a in articles
+    ]
+
+
+@app.get("/api/intel-vault/{article_id}")
+def get_intel_article(article_id: int, db: Session = Depends(get_db)):
+    """Public single article detail."""
+    article = db.query(IntelArticle).filter(IntelArticle.id == article_id, IntelArticle.is_published == True).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    return {
+        "id": article.id,
+        "title": article.title,
+        "category": article.category,
+        "content": article.content,
+        "summary": article.summary,
+        "telegram_file_id": article.telegram_file_id,
+        "author_id": article.author_id,
+        "created_at": article.created_at.isoformat() if article.created_at else None,
+        "updated_at": article.updated_at.isoformat() if article.updated_at else None,
+    }
+
+
+def _require_admin(user_id: int, db: Session):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
+@app.post("/api/admin/intel-vault")
+def create_intel_article(payload: IntelArticleCreateRequest, user_id: int = Depends(verify_token), db: Session = Depends(get_db)):
+    _require_admin(user_id, db)
+    if len(payload.title) > INTEL_TITLE_MAX:
+        raise HTTPException(status_code=400, detail=f"Title is too long (max {INTEL_TITLE_MAX} characters).")
+    if len(payload.category) > INTEL_CATEGORY_MAX:
+        raise HTTPException(status_code=400, detail=f"Category is too long (max {INTEL_CATEGORY_MAX} characters).")
+    if len(payload.content) > INTEL_CONTENT_MAX:
+        raise HTTPException(status_code=400, detail=f"Content is too long (max {INTEL_CONTENT_MAX} characters).")
+    if payload.summary and len(payload.summary) > INTEL_SUMMARY_MAX:
+        raise HTTPException(status_code=400, detail=f"Summary is too long (max {INTEL_SUMMARY_MAX} characters).")
+    if not payload.title.strip() or not payload.category.strip() or not payload.content.strip():
+        raise HTTPException(status_code=400, detail="Title, category, and content are required.")
+
+    article = IntelArticle(
+        title=payload.title.strip(),
+        category=payload.category.strip(),
+        content=payload.content.strip(),
+        summary=payload.summary.strip() if payload.summary else None,
+        telegram_file_id=payload.telegram_file_id.strip() if payload.telegram_file_id else None,
+        author_id=user_id,
+        is_published=payload.is_published,
+    )
+    db.add(article)
+    db.commit()
+    db.refresh(article)
+    return {"message": "Article created successfully.", "id": article.id}
+
+
+@app.put("/api/admin/intel-vault/{article_id}")
+def update_intel_article(article_id: int, payload: IntelArticleUpdateRequest, user_id: int = Depends(verify_token), db: Session = Depends(get_db)):
+    _require_admin(user_id, db)
+    article = db.query(IntelArticle).filter(IntelArticle.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+
+    if payload.title is not None:
+        if len(payload.title) > INTEL_TITLE_MAX:
+            raise HTTPException(status_code=400, detail=f"Title is too long (max {INTEL_TITLE_MAX} characters).")
+        article.title = payload.title.strip()
+    if payload.category is not None:
+        if len(payload.category) > INTEL_CATEGORY_MAX:
+            raise HTTPException(status_code=400, detail=f"Category is too long (max {INTEL_CATEGORY_MAX} characters).")
+        article.category = payload.category.strip()
+    if payload.content is not None:
+        if len(payload.content) > INTEL_CONTENT_MAX:
+            raise HTTPException(status_code=400, detail=f"Content is too long (max {INTEL_CONTENT_MAX} characters).")
+        article.content = payload.content.strip()
+    if payload.summary is not None:
+        if len(payload.summary) > INTEL_SUMMARY_MAX:
+            raise HTTPException(status_code=400, detail=f"Summary is too long (max {INTEL_SUMMARY_MAX} characters).")
+        article.summary = payload.summary.strip() or None
+    if payload.telegram_file_id is not None:
+        article.telegram_file_id = payload.telegram_file_id.strip() or None
+    if payload.is_published is not None:
+        article.is_published = payload.is_published
+
+    db.commit()
+    db.refresh(article)
+    return {"message": "Article updated successfully.", "id": article.id}
+
+
+@app.delete("/api/admin/intel-vault/{article_id}")
+def delete_intel_article(article_id: int, user_id: int = Depends(verify_token), db: Session = Depends(get_db)):
+    _require_admin(user_id, db)
+    article = db.query(IntelArticle).filter(IntelArticle.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    db.delete(article)
+    db.commit()
+    return {"message": "Article deleted successfully.", "id": article_id}
 
 
 # ==================== HINT ROUTES ====================

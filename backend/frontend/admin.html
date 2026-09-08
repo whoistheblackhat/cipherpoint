@@ -274,6 +274,7 @@
         <div class="admin-tabs">
             <button class="admin-tab active" data-tab="create"><i class="fa-solid fa-plus"></i> Create Challenge</button>
             <button class="admin-tab" data-tab="edit"><i class="fa-solid fa-pen-to-square"></i> Edit / Delete</button>
+            <button class="admin-tab" data-tab="intel"><i class="fa-solid fa-book-open"></i> Intel Vault</button>
             <button class="admin-tab" data-tab="users"><i class="fa-solid fa-users"></i> User Management</button>
             <button class="admin-tab" data-tab="flagged"><i class="fa-solid fa-flag"></i> Flagged Users</button>
             <button class="admin-tab" data-tab="moderation"><i class="fa-solid fa-flag"></i> Moderation Queue</button>
@@ -356,6 +357,63 @@
                 <h2><i class="fa-solid fa-pen-to-square"></i> Existing Challenges</h2>
                 <div id="editListMessage" class="form-message"></div>
                 <ul class="admin-list" id="editChallengeList">
+                    <li style="text-align:center;color:#8b949e;">Loading…</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- INTEL VAULT -->
+        <section class="admin-panel" data-panel="intel">
+            <div class="admin-card">
+                <h2><i class="fa-solid fa-book-open"></i> Intel Vault</h2>
+                <form id="intelCreateForm">
+                    <div class="form-row">
+                        <div>
+                            <label>Title</label>
+                            <input name="title" maxlength="200" required>
+                        </div>
+                        <div>
+                            <label>Category</label>
+                            <input name="category" maxlength="60" placeholder="Networking, Linux, OSINT, Forensics..." required>
+                        </div>
+                    </div>
+                    <div class="form-row full">
+                        <div>
+                            <label>Summary</label>
+                            <input name="summary" maxlength="500">
+                        </div>
+                    </div>
+                    <div class="form-row full">
+                        <div>
+                            <label>Content</label>
+                            <textarea name="content" maxlength="20000" required></textarea>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div>
+                            <label>Media Upload (optional)</label>
+                            <input type="file" id="intelMedia" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,video/quicktime">
+                            <input type="hidden" id="intelFileId" name="telegram_file_id" value="">
+                        </div>
+                        <div>
+                            <label>Status</label>
+                            <select name="is_published">
+                                <option value="true">Published</option>
+                                <option value="false">Draft</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="intelCreateMessage" class="form-message"></div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save Article</button>
+                        <button type="reset" class="btn btn-light"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+                    </div>
+                </form>
+            </div>
+            <div class="admin-card">
+                <h2><i class="fa-solid fa-list"></i> Existing Articles</h2>
+                <div id="intelListMessage" class="form-message"></div>
+                <ul class="admin-list" id="intelArticleList">
                     <li style="text-align:center;color:#8b949e;">Loading…</li>
                 </ul>
             </div>
@@ -493,6 +551,54 @@
                 <div class="actions">
                     <button type="button" class="btn btn-light" id="banCancel">Cancel</button>
                     <button type="submit" class="btn btn-primary" style="background:#f85149;border-color:#f85149;"><i class="fa-solid fa-gavel"></i> Ban</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="intelEditModal" class="modal-overlay">
+        <div class="modal-card">
+            <h3><i class="fa-solid fa-pen-to-square"></i> Edit Intel Article</h3>
+            <form id="intelEditForm">
+                <input type="hidden" name="id">
+                <div class="form-row">
+                    <div class="form-row full">
+                        <label>Title</label>
+                        <input name="title" maxlength="200" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div>
+                        <label>Category</label>
+                        <input name="category" maxlength="60" required>
+                    </div>
+                    <div>
+                        <label>Status</label>
+                        <select name="is_published">
+                            <option value="true">Published</option>
+                            <option value="false">Draft</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row full">
+                    <label>Summary</label>
+                    <input name="summary" maxlength="500">
+                </div>
+                <div class="form-row full">
+                    <label>Content</label>
+                    <textarea name="content" maxlength="20000" required></textarea>
+                </div>
+                <div class="form-row">
+                    <div>
+                        <label>Media Upload (optional)</label>
+                        <input type="file" id="intelEditMedia" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,video/quicktime">
+                        <input type="hidden" id="intelEditFileId" name="telegram_file_id" value="">
+                    </div>
+                </div>
+                <div id="intelEditMessage" class="form-message"></div>
+                <div class="actions">
+                    <button type="button" class="btn btn-light" id="intelEditCancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save</button>
                 </div>
             </form>
         </div>

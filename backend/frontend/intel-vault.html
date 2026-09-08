@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" rel="icon" href="favicon.ico">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CipherPoint | Intel Vault</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .intel-page {
+            padding-top: 24px;
+            padding-bottom: 60px;
+        }
+        .intel-hero {
+            margin-bottom: 22px;
+        }
+        .intel-hero h1 {
+            font-size: clamp(1.8rem, 3vw, 2.6rem);
+            font-weight: 800;
+            letter-spacing: -0.04em;
+            line-height: 1.1;
+            margin: 0;
+        }
+        .intel-hero p {
+            color: var(--muted);
+            margin-top: 8px;
+            max-width: 720px;
+        }
+        .category-strip {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+        }
+        .category-chip {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--line);
+            color: var(--muted);
+            border-radius: 999px;
+            padding: 0.45rem 0.85rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .category-chip:hover {
+            border-color: var(--line-strong);
+            color: var(--text);
+            background: rgba(255,255,255,0.06);
+        }
+        .category-chip.active {
+            background: rgba(91, 179, 255, 0.12);
+            border-color: rgba(91, 179, 255, 0.35);
+            color: var(--primary);
+        }
+        .article-list {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        .article-card {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 18px;
+            cursor: pointer;
+            transition: background 0.2s ease, border-color 0.2s ease;
+        }
+        .article-card:hover {
+            background: rgba(255,255,255,0.04);
+            border-color: var(--line-strong);
+        }
+        .article-card-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+        .article-category {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 0.2rem 0.55rem;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            background: rgba(109, 224, 208, 0.1);
+            border: 1px solid rgba(109, 224, 208, 0.22);
+            color: var(--teal);
+        }
+        .article-date {
+            color: var(--muted);
+            font-size: 0.8rem;
+        }
+        .article-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #f3f4f6;
+            margin: 0 0 8px;
+            line-height: 1.35;
+            letter-spacing: -0.01em;
+        }
+        .article-summary {
+            color: #8b949e;
+            font-size: 0.92rem;
+            line-height: 1.55;
+            margin-bottom: 10px;
+        }
+        .article-meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--muted);
+            font-size: 0.8rem;
+            flex-wrap: wrap;
+        }
+        .article-meta .author-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .article-detail {
+            display: none;
+        }
+        .article-detail.active {
+            display: block;
+        }
+        .article-back {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--line);
+            color: var(--muted);
+            border-radius: 10px;
+            padding: 0.55rem 0.9rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 16px;
+            transition: all 0.2s ease;
+        }
+        .article-back:hover {
+            border-color: var(--line-strong);
+            color: var(--text);
+        }
+        .article-body {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 18px;
+            line-height: 1.7;
+            font-size: 0.95rem;
+            color: #d1d5db;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .article-media {
+            background: #000000;
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 180px;
+            max-height: 520px;
+            margin-bottom: 14px;
+        }
+        .article-media img,
+        .article-media video {
+            width: 100%;
+            max-height: 520px;
+            object-fit: contain;
+            display: block;
+        }
+        .intel-empty {
+            text-align: center;
+            color: var(--muted);
+            padding: 40px 20px;
+        }
+        @media (max-width: 640px) {
+            .article-card-head {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+    </style>
+</head>
+<body data-page="intel-vault">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="app-shell">
+        <aside class="sidebar-nav" id="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-mark-icon"><i class="fa-solid fa-user-secret"></i></div>
+                <div class="brand-text">CipherPoint</div>
+            </div>
+            <button id="sidebarToggle" class="sidebar-toggle" aria-label="Toggle navigation">
+                <i class="fa-solid fa-angle-left"></i>
+            </button>
+            <nav class="sidebar-links">
+                <div class="sidebar-section">
+                    <button class="sidebar-section-header" data-section="main">
+                        <span>Main</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div class="sidebar-section-links" data-section="main">
+                        <a href="dashboard.html" class="sidebar-link">
+                            <i class="fa-solid fa-house"></i>
+                            <span>Dashboard</span>
+                        </a>
+                        <a href="leaderboard.html" class="sidebar-link">
+                            <i class="fa-solid fa-trophy"></i>
+                            <span>Leaderboard</span>
+                        </a>
+                    </div>
+                </div>
+                <div class="sidebar-section">
+                    <button class="sidebar-section-header" data-section="social">
+                        <span>Social</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div class="sidebar-section-links" data-section="social">
+                        <a href="community.html" class="sidebar-link">
+                            <i class="fa-solid fa-users"></i>
+                            <span>Community</span>
+                        </a>
+                    </div>
+                </div>
+                <div class="sidebar-section">
+                    <button class="sidebar-section-header" data-section="intel">
+                        <span>Intel</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div class="sidebar-section-links" data-section="intel">
+                        <a href="intel-vault.html" class="sidebar-link active">
+                            <i class="fa-solid fa-book-open"></i>
+                            <span>Intel Vault</span>
+                        </a>
+                    </div>
+                </div>
+                <div class="sidebar-section">
+                    <button class="sidebar-section-header" data-section="account">
+                        <span>Account</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div class="sidebar-section-links" data-section="account">
+                        <a href="profile.html" class="sidebar-link">
+                            <i class="fa-solid fa-user-astronaut"></i>
+                            <span>Profile</span>
+                        </a>
+                        <a href="settings.html" class="sidebar-link">
+                            <i class="fa-solid fa-gear"></i>
+                            <span>Settings</span>
+                        </a>
+                    </div>
+                </div>
+            </nav>
+            <div class="sidebar-footer">
+                <button id="logoutBtn" class="btn btn-light btn-small btn-block">
+                    <i class="fa-solid fa-right-from-bracket"></i> Sign Out
+                </button>
+            </div>
+        </aside>
+
+        <div class="app-main">
+            <header class="dashboard-header">
+                <div class="container dashboard-topbar">
+                    <div class="header-left">
+                        <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu">
+                            <i class="fa-solid fa-bars"></i>
+                        </button>
+                        <a href="dashboard.html" class="header-logo">
+                            <div class="brand-mark-icon"><i class="fa-solid fa-user-secret"></i></div>
+                            <span class="brand-text">CipherPoint</span>
+                        </a>
+                    </div>
+                    <div class="header-center">
+                        <span class="eyebrow">Knowledge Base</span>
+                        <h2 style="margin:0;">Intel Vault</h2>
+                    </div>
+                    <div class="header-right"></div>
+                </div>
+            </header>
+
+            <main class="container intel-page">
+                <div class="intel-hero">
+                    <h1>Intel Vault</h1>
+                    <p>Curated notes and write-ups on networking, Linux, OSINT, forensics, bug bounty, and more.</p>
+                </div>
+
+                <div class="category-strip" id="categoryStrip">
+                    <button class="category-chip active" data-category="">All</button>
+                    <button class="category-chip" data-category="Networking">Networking</button>
+                    <button class="category-chip" data-category="Linux">Linux</button>
+                    <button class="category-chip" data-category="OSINT">OSINT</button>
+                    <button class="category-chip" data-category="Forensics">Forensics</button>
+                    <button class="category-chip" data-category="Bug Bounty">Bug Bounty</button>
+                    <button class="category-chip" data-category="Web">Web</button>
+                    <button class="category-chip" data-category="Reverse Engineering">Reverse Engineering</button>
+                </div>
+
+                <div id="articleList" class="article-list"></div>
+                <div id="articleDetail" class="article-detail"></div>
+            </main>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <footer class="site-footer">
+        <div class="container footer-inner">
+            <div>© 2026 CipherPoint</div>
+            <div class="footer-links">
+                <a href="about.html">About</a>
+                <a href="contact.html">Contact</a>
+                <a href="api-docs.html">API</a>
+                <a href="notifications.html">Notifications</a>
+                <a href="terms.html">Terms</a>
+                <a href="privacy.html">Privacy</a>
+            </div>
+            <div>Secure OSINT lab infrastructure</div>
+        </div>
+    </footer>
+
+    <script src="app.js"></script>
+    <script>
+        const API_BASE = '/api';
+        let currentCategory = '';
+
+        function $(id) { return document.getElementById(id); }
+
+        async function authedFetch(path, options = {}) {
+            const headers = Object.assign({ 'Content-Type': 'application/json' }, options.headers || {});
+            const token = localStorage.getItem('token');
+            if (token) headers.Authorization = `Bearer ${token}`;
+            const res = await fetch(API_BASE + path, Object.assign({}, options, { headers }));
+            if (res.status === 401) {
+                try { localStorage.removeItem('token'); localStorage.removeItem('user'); } catch {}
+                window.location.href = 'login.html';
+                return { ok: false, status: 401 };
+            }
+            let data = null;
+            try { data = await res.json(); } catch {}
+            return { ok: res.ok, status: res.status, data };
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            toast.style.cssText = 'position:fixed;bottom:24px;right:24px;padding:12px 18px;border-radius:8px;color:#fff;font-size:0.9rem;z-index:9999;max-width:90vw;word-break:break-word;';
+            if (type === 'success') toast.style.background = '#3fb950';
+            else if (type === 'error') toast.style.background = '#f85149';
+            else toast.style.background = '#58a6ff';
+            document.body.appendChild(toast);
+            setTimeout(() => { toast.remove(); }, 3000);
+        }
+
+        async function loadArticles() {
+            const url = currentCategory ? `/intel-vault?category=${encodeURIComponent(currentCategory)}` : '/intel-vault';
+            const res = await authedFetch(url);
+            const listEl = $('articleList');
+            const detailEl = $('articleDetail');
+            if (!res.ok) {
+                listEl.innerHTML = `<div class="intel-empty">Failed to load articles.</div>`;
+                return;
+            }
+            const articles = Array.isArray(res.data) ? res.data : [];
+            if (articles.length === 0) {
+                listEl.innerHTML = `<div class="intel-empty">No articles published yet.</div>`;
+                detailEl.classList.remove('active');
+                detailEl.innerHTML = '';
+                return;
+            }
+            listEl.innerHTML = articles.map(a => `
+                <article class="article-card" data-id="${a.id}">
+                    <div class="article-card-head">
+                        <span class="article-category"><i class="fa-solid fa-tag"></i> ${escapeHtml(a.category)}</span>
+                        <span class="article-date">${a.created_at ? new Date(a.created_at).toLocaleDateString() : ''}</span>
+                    </div>
+                    <h3 class="article-title">${escapeHtml(a.title)}</h3>
+                    ${a.summary ? `<p class="article-summary">${escapeHtml(a.summary)}</p>` : ''}
+                    <div class="article-meta">
+                        <span class="author-pill"><i class="fa-solid fa-user"></i> Author #${a.author_id ?? '—'}</span>
+                    </div>
+                </article>
+            `).join('');
+            detailEl.classList.remove('active');
+            detailEl.innerHTML = '';
+
+            listEl.querySelectorAll('.article-card').forEach(card => {
+                card.addEventListener('click', () => openArticle(Number(card.dataset.id)));
+            });
+        }
+
+        async function openArticle(id) {
+            const res = await authedFetch(`/intel-vault/${id}`);
+            if (!res.ok) {
+                showToast('Article not found.', 'error');
+                return;
+            }
+            const a = res.data;
+            const detailEl = $('articleDetail');
+            const listEl = $('articleList');
+            listEl.style.display = 'none';
+            detailEl.classList.add('active');
+            detailEl.innerHTML = `
+                <button class="article-back" id="articleBack"><i class="fa-solid fa-arrow-left"></i> Back to Intel Vault</button>
+                <div class="article-card-head" style="margin-top:8px;">
+                    <span class="article-category"><i class="fa-solid fa-tag"></i> ${escapeHtml(a.category)}</span>
+                    <span class="article-date">${a.created_at ? new Date(a.created_at).toLocaleDateString() : ''}</span>
+                </div>
+                <h1 style="font-size:1.6rem;font-weight:800;margin:6px 0 12px;line-height:1.25;">${escapeHtml(a.title)}</h1>
+                ${a.telegram_file_id ? `<div class="article-media" id="articleMedia"></div>` : ''}
+                <div class="article-body">${escapeHtml(a.content)}</div>
+                <div class="article-meta" style="margin-top:12px;">
+                    <span class="author-pill"><i class="fa-solid fa-user"></i> Author #${a.author_id ?? '—'}</span>
+                </div>
+            `;
+            $('articleBack').addEventListener('click', () => {
+                detailEl.classList.remove('active');
+                detailEl.innerHTML = '';
+                listEl.style.display = '';
+            });
+            if (a.telegram_file_id) {
+                const mediaEl = $('articleMedia');
+                if (mediaEl) {
+                    const img = document.createElement('img');
+                    img.src = `/api/media/${a.telegram_file_id}`;
+                    img.alt = escapeHtml(a.title);
+                    mediaEl.appendChild(img);
+                }
+            }
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function escapeHtml(text) {
+            if (text == null) return '';
+            return String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function setupCategoryFilters() {
+            const strip = $('categoryStrip');
+            if (!strip) return;
+            strip.querySelectorAll('.category-chip').forEach(chip => {
+                chip.addEventListener('click', () => {
+                    strip.querySelectorAll('.category-chip').forEach(c => c.classList.remove('active'));
+                    chip.classList.add('active');
+                    currentCategory = chip.dataset.category || '';
+                    loadArticles();
+                });
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            setupCategoryFilters();
+            loadArticles();
+        });
+    </script>
+</body>
+</html>

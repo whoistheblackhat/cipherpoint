@@ -98,16 +98,13 @@ button, input {
 }
 
 .brand-mark-icon {
-  display: inline-grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--teal) 100%);
-  color: #08131f;
-  font-size: 1rem;
-  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+  background: rgba(255,255,255,0.04);
   border: 1px solid var(--line-strong);
+  font-size: 1.1rem;
 }
 
 .brand-text {

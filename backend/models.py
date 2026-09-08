@@ -219,3 +219,20 @@ class ActiveToken(Base):
     # 'access' = short-lived, 'refresh' = long-lived. The refresh
     # endpoint rejects anything that isn't typ=refresh.
     token_type = Column(String, default="access", nullable=False)
+
+
+class IntelArticle(Base):
+    __tablename__ = "intel_articles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    category = Column(String, nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    summary = Column(String, nullable=True)
+    telegram_file_id = Column(String, nullable=True)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    is_published = Column(Boolean, default=False, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    author = relationship("User")

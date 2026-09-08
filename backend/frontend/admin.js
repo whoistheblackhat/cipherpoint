@@ -113,12 +113,14 @@
     setupTabs();
     setupCreate();
     setupEdit();
+    setupIntel();
     setupUsers();
     setupFlaggedUsers();
     setupModeration();
 
     await loadStats();
     await loadEditList();
+    await loadIntelList();
     await loadFlaggedList();
     await loadModerationList();
 
@@ -623,6 +625,162 @@
         showMessage(msg, (res.data && res.data.detail) || 'Resolve failed', 'error');
       }
     });
+  }
+
+  // -------- INTEL VAULT --------
+  async function loadIntelList() {
+    const list = $('intelArticleList');
+    const msg = $('intelListMessage');
+    hideMessage(msg);
+    list.innerHTML = '<li style="text-align:center;color:#8b949e;">Loading…</li>';
+    const res = await authedFetch('/admin/intel-vault');
+    if (!res.ok) {
+      list.innerHTML = '';
+      showMessage(msg, 'Failed to load articles.', 'error');
+      return;
+    }
+    const articles = Array.isArray(res.data) ? res.data : [];
+    if (!articles.length) {
+      list.innerHTML = '<li style="text-align:center;color:#8b949e;">No articles yet.</li>';
+      return;
+    }
+    list.innerHTML = '';
+    articles.forEach(a => {
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <div class="meta-block">
+          <div class="title">${escapeHtml(a.title)}</div>
+          <div class="sub"><b>Category:</b> ${escapeHtml(a.category || '—')} · <b>Status:</b> ${a.is_published ? 'Published' : 'Draft'} · ${escapeHtml(a.created_at || '')}</div>
+        </div>
+        <button class="btn-icon" data-intel-edit="${a.id}"><i class="fa-solid fa-pen"></i> Edit</button>
+        <button class="btn-icon danger" data-intel-delete="${a.id}"><i class="fa-solid fa-trash"></i> Delete</button>
+      `;
+      list.appendChild(li);
+    });
+  }
+
+  function setupIntel() {
+    const form = $('intelCreateForm');
+    const msg = $('intelCreateMessage');
+    const fileInput = $('intelMedia');
+    const fileIdInput = $('intelFileId');
+
+    if (fileInput) {
+      fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        showMessage(msg, 'Uploading media...', 'info');
+        const fileId = await uploadMediaFile(file);
+        if (fileId) {
+          fileIdInput.value = fileId;
+          showMessage(msg, 'Media uploaded.', 'success');
+        } else {
+          showMessage(msg, 'Media upload failed.', 'error');
+        }
+      });
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideMessage(msg);
+      const fd = new FormData(form);
+      const payload = {
+        title: (fd.get('title') || '').trim(),
+        category: (fd.get('category') || '').trim(),
+        content: (fd.get('content') || '').trim(),
+        summary: (fd.get('summary') || '').trim() || null,
+        telegram_file_id: (fd.get('telegram_file_id') || '').trim() || null,
+        is_published: String(fd.get('is_published')).toLowerCase() === 'true',
+      };
+      if (!payload.title || !payload.category || !payload.content) {
+        showMessage(msg, 'Title, category, and content are required.', 'error');
+        return;
+      }
+      const res = await authedFetch('/admin/intel-vault', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        showMessage(msg, 'Article created successfully.', 'success');
+        form.reset();
+        fileIdInput.value = '';
+        await loadIntelList();
+        await loadStats();
+      } else {
+        showMessage(msg, (res.data && res.data.detail) || 'Create failed', 'error');
+      }
+    });
+
+    const list = $('intelArticleList');
+    list.addEventListener('click', async (e) => {
+      const editBtn = e.target.closest('button[data-intel-edit]');
+      const deleteBtn = e.target.closest('button[data-intel-delete]');
+      if (editBtn) {
+        const id = editBtn.dataset.intelEdit;
+        const res = await authedFetch(`/admin/intel-vault/${id}`);
+        if (!res.ok) {
+          showToast('Failed to load article.', 'error');
+          return;
+        }
+        const a = res.data;
+        const modal = $('intelEditModal');
+        const form = $('intelEditForm');
+        form.id.value = a.id;
+        form.title.value = a.title || '';
+        form.category.value = a.category || '';
+        form.summary.value = a.summary || '';
+        form.content.value = a.content || '';
+        form.telegram_file_id.value = a.telegram_file_id || '';
+        form.is_published.value = String(a.is_published);
+        modal.classList.add('show');
+      }
+      if (deleteBtn) {
+        const id = deleteBtn.dataset.intelDelete;
+        if (!confirm('Delete this article permanently?')) return;
+        const res = await authedFetch(`/admin/intel-vault/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          showToast('Article deleted.', 'success');
+          await loadIntelList();
+          await loadStats();
+        } else {
+          showToast((res.data && res.data.detail) || 'Delete failed', 'error');
+        }
+      }
+    });
+
+    const editModal = $('intelEditModal');
+    const editCancel = $('intelEditCancel');
+    if (editCancel) {
+      editCancel.addEventListener('click', () => {
+        editModal.classList.remove('show');
+      });
+    }
+    const editForm = $('intelEditForm');
+    if (editForm) {
+      editForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = editForm.id.value;
+        const payload = {
+          title: editForm.title.value.trim() || undefined,
+          category: editForm.category.value.trim() || undefined,
+          summary: editForm.summary.value.trim() || undefined,
+          content: editForm.content.value.trim() || undefined,
+          telegram_file_id: editForm.telegram_file_id.value.trim() || undefined,
+          is_published: String(editForm.is_published.value).toLowerCase() === 'true',
+        };
+        const res = await authedFetch(`/admin/intel-vault/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          showToast('Article updated.', 'success');
+          editModal.classList.remove('show');
+          await loadIntelList();
+        } else {
+          showToast((res.data && res.data.detail) || 'Update failed', 'error');
+        }
+      });
+    }
   }
 
   function escapeHtml(s) {

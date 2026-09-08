@@ -2525,13 +2525,6 @@ body[data-page="signup"] > canvas#networkCanvas {
     grid-template-columns: 1fr;
   }
 }
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 700;
-  color: var(--text);
-  margin-bottom: 14px;
-}
 
 .tag-list,
 .history-list,
@@ -3702,18 +3695,18 @@ body[data-page="signup"] > canvas#networkCanvas {
   }
 }
 
-  @media (max-width: 640px) {
-    .sidebar-toggle {
-      display: none;
-    }
-    .menu-toggle {
-      display: flex;
-    }
-    .dashboard-grid {
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-    }
+@media (max-width: 640px) {
+  .sidebar-toggle {
+    display: none;
+  }
+  .menu-toggle {
+    display: flex;
+  }
+  .dashboard-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
   .feed-column {
     width: 100%;
   }
@@ -3763,6 +3756,9 @@ body[data-page="signup"] > canvas#networkCanvas {
   .leaderboard-table td {
     padding: 8px 10px;
   }
+  .leaderboard-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .profile-meta {
     flex-wrap: wrap;
     gap: 10px;
@@ -3796,9 +3792,50 @@ body[data-page="signup"] > canvas#networkCanvas {
   .field-grid {
     grid-template-columns: 1fr;
   }
+  .container {
+    width: min(100% - 16px, 1200px);
+  }
+  .auth-container {
+    flex-direction: column;
+  }
+  .auth-left {
+    min-height: 220px;
+    flex: none;
+  }
+  .auth-right {
+    min-height: auto;
+    padding: 28px 16px;
+    flex: 1;
+  }
+  .auth-left .brand-text {
+    font-size: 1.6rem;
+  }
+  .auth-left-subtitle {
+    font-size: 0.9rem;
+    max-width: 260px;
+  }
+  .auth-right {
+    padding: 28px 16px;
+    flex: 1;
+  }
+  .auth-form-wrapper {
+    max-width: 100%;
+  }
+  .hero {
+    padding: 56px 0 36px;
+  }
+  .hero-copy h1 {
+    font-size: clamp(2rem, 5vw, 3rem);
+  }
 }
 
 @media (max-width: 480px) {
+  .leaderboard-stats {
+    grid-template-columns: 1fr;
+  }
+  .profile-meta-row {
+    grid-template-columns: 1fr;
+  }
   .brand-mark-icon {
     width: 34px;
     height: 34px;

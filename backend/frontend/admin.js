@@ -158,11 +158,12 @@
   // -------- STATS --------
   async function loadStats() {
     try {
-      const [usersRes, chRes, repRes, flaggedRes] = await Promise.all([
+      const [usersRes, chRes, repRes, flaggedRes, solvesRes] = await Promise.all([
         authedFetch('/admin/users?limit=1'),
         authedFetch('/challenges?limit=1'),
         authedFetch('/moderation/reports'),
-        authedFetch('/admin/users/flagged?limit=1')
+        authedFetch('/admin/users/flagged?limit=1'),
+        authedFetch('/admin/stats/solves-24h')
       ]);
       if (usersRes.ok && usersRes.data && typeof usersRes.data.total === 'number') {
         $('statUsers').textContent = usersRes.data.total;
@@ -178,6 +179,11 @@
         $('statReports').textContent = repRes.data.length;
       } else {
         $('statReports').textContent = '—';
+      }
+      if (solvesRes.ok && solvesRes.data && typeof solvesRes.data.total === 'number') {
+        $('statSolves').textContent = solvesRes.data.total;
+      } else {
+        $('statSolves').textContent = '—';
       }
       if (flaggedRes.ok && typeof flaggedRes.data.total === 'number') {
         $('statFlagged').textContent = flaggedRes.data.total;

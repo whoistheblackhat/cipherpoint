@@ -3464,6 +3464,15 @@ def submit_flag(
 
 # ==================== LEADERBOARD ROUTES ====================
 
+@app.get("/api/admin/stats/solves-24h")
+def admin_stats_solves_24h(db: Session = Depends(get_db), user_id: int = Depends(verify_token)):
+    """Count of solves recorded in the last 24 hours."""
+    _require_admin(user_id, db)
+    cutoff = datetime.utcnow() - timedelta(hours=24)
+    count = db.query(SolvedChallenge).filter(SolvedChallenge.solved_at >= cutoff).count()
+    return {"total": count}
+
+
 @app.get("/api/leaderboard")
 def get_leaderboard(limit: int = 100, db: Session = Depends(get_db)):
     """Get top users by rank points (cached 30s)"""

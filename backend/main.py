@@ -3897,6 +3897,7 @@ if os.path.isdir(FRONTEND_DIR):
     @app.get("/api-docs.html", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/admin.html", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/notifications.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/intel-vault.html", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/contact.html", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/404.html", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/500.html", response_class=HTMLResponse, include_in_schema=False)

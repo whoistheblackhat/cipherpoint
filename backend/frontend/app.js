@@ -1421,7 +1421,7 @@ function renderCommunityChallenges() {
         <div class="card-header-bar">
           <div class="card-meta-left">
             <div class="card-category-icon"><i class="fa-solid fa-users"></i></div>
-            <span class="card-category-name">r/${escapeHtml(challenge.category || 'Community')}</span>
+            <span class="card-category-name">lab/${escapeHtml(challenge.category || 'Community')}</span>
             <span class="card-time-ago">• ${challenge.created_at ? new Date(challenge.created_at).toLocaleDateString() : 'Today'}</span>
             <span class="card-category-badge">${escapeHtml(challenge.difficulty || 'Open')}</span>
           </div>
@@ -2855,7 +2855,7 @@ function renderChallenges() {
         <div class="card-header-bar">
           <div class="card-meta-left">
             <div class="card-category-icon"><i class="fa-solid fa-user-secret"></i></div>
-            <span class="card-category-name">r/${escapeHtml(challenge.category || 'OSINT')}</span>
+            <span class="card-category-name">lab/${escapeHtml(challenge.category || 'OSINT')}</span>
             <span class="card-time-ago">• ${challenge.created_at ? new Date(challenge.created_at).toLocaleDateString() : 'Today'}</span>
             <span class="card-category-badge">${escapeHtml(challenge.difficulty || 'Open')}</span>
             ${challenge.has_walkthrough ? `<span class="walkthrough-pill" title="Author provided a solution walkthrough"><i class="fa-solid fa-lightbulb"></i> Walkthrough</span>` : ''}
@@ -2934,7 +2934,7 @@ async function loadChallengeDetailPage(challengeId) {
     document.body.dataset.challengeId = challenge.id;
 
     if (pageTitle) pageTitle.textContent = challenge.title;
-    if (safeGetById('detailCategory')) safeGetById('detailCategory').textContent = `r/${escapeHtml(challenge.category || 'OSINT')}`;
+    if (safeGetById('detailCategory')) safeGetById('detailCategory').textContent = `lab/${escapeHtml(challenge.category || 'OSINT')}`;
     if (safeGetById('detailTime')) safeGetById('detailTime').textContent = `• ${challenge.created_at ? new Date(challenge.created_at).toLocaleDateString() : 'Today'}`;
     if (safeGetById('detailDifficulty')) safeGetById('detailDifficulty').textContent = escapeHtml(challenge.difficulty || 'Open');
     if (safeGetById('detailTitle')) safeGetById('detailTitle').textContent = challenge.title;
@@ -3166,7 +3166,7 @@ function renderChallengeModal(challenge) {
       <div class="modal-header-bar">
         <div class="modal-meta-left">
           <div class="card-category-icon"><svg viewBox="0 0 64 64" width="20" height="21"><use href="/logo.svg#eagle"/></svg></div>
-          <span class="card-category-name">r/${escapeHtml(challenge.category || 'OSINT')}</span>
+          <span class="card-category-name">lab/${escapeHtml(challenge.category || 'OSINT')}</span>
           <span class="card-time-ago">• ${challenge.created_at ? new Date(challenge.created_at).toLocaleDateString() : 'Today'}</span>
           <span class="card-category-badge">${escapeHtml(challenge.difficulty || 'Open')}</span>
         </div>

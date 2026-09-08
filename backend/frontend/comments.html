@@ -55,15 +55,23 @@
         <div class="app-main">
             <header class="dashboard-header">
                 <div class="container dashboard-topbar">
-                    <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu">
-                        <i class="fa-solid fa-bars"></i>
-                    </button>
-                    <a id="backToChallengeBtn" class="btn btn-light btn-small" href="challenge_detail.html" style="text-decoration:none;margin-right:10px;">
-                        <i class="fa-solid fa-arrow-left"></i> Back
-                    </a>
-                    <div>
+                    <div class="header-left">
+                        <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu">
+                            <i class="fa-solid fa-bars"></i>
+                        </button>
+                        <a href="dashboard.html" class="header-logo">
+                            <div class="brand-mark-icon"><i class="fa-solid fa-user-secret"></i></div>
+                            <span class="brand-text">CipherPoint</span>
+                        </a>
+                    </div>
+                    <div class="header-center">
                         <span class="eyebrow">Discussion</span>
                         <h2 id="commentsPageTitle" style="margin:0;">Loading...</h2>
+                    </div>
+                    <div class="header-right">
+                        <a id="backToChallengeBtn" class="btn btn-light btn-small" href="challenge_detail.html" style="text-decoration:none;">
+                            <i class="fa-solid fa-arrow-left"></i> Back
+                        </a>
                     </div>
                 </div>
             </header>

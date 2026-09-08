@@ -335,7 +335,8 @@ function showAuthNotice(message) {
   }
 }
 
-const LOADING_MAX_MS = 8000;
+const LOADING_MIN_MS = 500;
+const LOADING_MAX_MS = 30000;
 
 function showLoadingScreen() {
   if (document.getElementById('cyberLoadingScreen')) return;
@@ -365,36 +366,37 @@ function showLoadingScreen() {
 
 function hideLoadingScreen() {
   const screen = document.getElementById('cyberLoadingScreen');
-  if (!screen) return;
-  const startedAt = Number(screen.dataset.startedAt || Date.now());
-  const remaining = Math.max(0, 420 - (Date.now() - startedAt));
-  window.setTimeout(() => {
-    screen.classList.add('is-hidden');
-    window.setTimeout(() => screen.remove(), 320);
-  }, remaining);
-}
-
-function showLoadingError() {
-  const screen = document.getElementById('cyberLoadingScreen');
-  if (!screen) return;
-  screen.classList.add('is-error');
-  screen.dataset.startedAt = String(Date.now());
-  const remaining = Math.max(0, 420 - (Date.now() - Number(screen.dataset.startedAt || Date.now())));
-  window.setTimeout(() => {
-    screen.classList.add('is-hidden');
-    window.setTimeout(() => screen.remove(), 320);
-  }, Math.max(remaining, 2000));
+  if (!screen) return Promise.resolve();
+  
+  return new Promise((resolve) => {
+    const startedAt = Number(screen.dataset.startedAt || Date.now());
+    const elapsed = Date.now() - startedAt;
+    const remaining = Math.max(0, LOADING_MIN_MS - elapsed);
+    
+    window.setTimeout(() => {
+      screen.classList.add('is-hidden');
+      window.setTimeout(() => {
+        if (screen.parentNode) screen.remove();
+        resolve();
+      }, 320);
+    }, remaining);
+  });
 }
 
 async function withLoadingTimeout(promise) {
   const timeout = new Promise((_, reject) => {
     window.setTimeout(() => reject(new Error('LOADING_TIMEOUT')), LOADING_MAX_MS);
   });
+  
   try {
     return await Promise.race([promise, timeout]);
   } catch (error) {
     if (error.message === 'LOADING_TIMEOUT') {
-      showLoadingError();
+      const screen = document.getElementById('cyberLoadingScreen');
+      if (screen) {
+        screen.classList.add('is-error');
+        screen.dataset.startedAt = String(Date.now());
+      }
       showToast('Connection timed out. Please check your network.', 'error');
     }
     throw error;
@@ -411,11 +413,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     })());
   } catch (error) {
     console.warn('App init failed:', error);
-    if (!document.getElementById('cyberLoadingScreen')) {
-      showLoadingError();
-    }
   } finally {
-    hideLoadingScreen();
+    await hideLoadingScreen();
   }
 });
 

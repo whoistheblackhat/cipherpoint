@@ -62,14 +62,20 @@
         <div class="app-main">
             <header class="dashboard-header">
                 <div class="container dashboard-topbar">
-                    <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu">
-                        <i class="fa-solid fa-bars"></i>
-                    </button>
-                    <div>
+                    <div class="header-left">
+                        <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu">
+                            <i class="fa-solid fa-bars"></i>
+                        </button>
+                        <a href="dashboard.html" class="header-logo">
+                            <div class="brand-mark-icon"><i class="fa-solid fa-user-secret"></i></div>
+                            <span class="brand-text">CipherPoint</span>
+                        </a>
+                    </div>
+                    <div class="header-center">
                         <span class="eyebrow">Ranking</span>
                         <h2 style="margin:0;">Top Analysts</h2>
                     </div>
-                    <div class="dashboard-actions">
+                    <div class="header-right">
                         <span id="currentUserBadge" class="user-pill"><i class="fa-solid fa-user"></i> <span id="currentUserLabel">Loading...</span></span>
                     </div>
                 </div>

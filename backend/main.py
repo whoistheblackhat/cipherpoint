@@ -3148,6 +3148,48 @@ def list_intel_articles(category: Optional[str] = None, db: Session = Depends(ge
     ]
 
 
+@app.get("/api/admin/intel-vault")
+def admin_list_intel_articles(db: Session = Depends(get_db), user_id: int = Depends(verify_token)):
+    """Admin list of all articles (published + drafts)."""
+    _require_admin(user_id, db)
+    articles = db.query(IntelArticle).order_by(IntelArticle.created_at.desc()).all()
+    return [
+        {
+            "id": a.id,
+            "title": a.title,
+            "category": a.category,
+            "summary": a.summary,
+            "telegram_file_id": a.telegram_file_id,
+            "author_id": a.author_id,
+            "is_published": a.is_published,
+            "created_at": a.created_at.isoformat() if a.created_at else None,
+            "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+        }
+        for a in articles
+    ]
+
+
+@app.get("/api/admin/intel-vault/{article_id}")
+def admin_get_intel_article(article_id: int, db: Session = Depends(get_db), user_id: int = Depends(verify_token)):
+    """Admin single article (includes drafts)."""
+    _require_admin(user_id, db)
+    article = db.query(IntelArticle).filter(IntelArticle.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    return {
+        "id": article.id,
+        "title": article.title,
+        "category": article.category,
+        "content": article.content,
+        "summary": article.summary,
+        "telegram_file_id": article.telegram_file_id,
+        "author_id": article.author_id,
+        "is_published": article.is_published,
+        "created_at": article.created_at.isoformat() if article.created_at else None,
+        "updated_at": article.updated_at.isoformat() if article.updated_at else None,
+    }
+
+
 @app.get("/api/intel-vault/{article_id}")
 def get_intel_article(article_id: int, db: Session = Depends(get_db)):
     """Public single article detail."""

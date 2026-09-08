@@ -50,10 +50,6 @@
                             <i class="fa-solid fa-users"></i>
                             <span>Community</span>
                         </a>
-                        <a href="comments.html" class="sidebar-link">
-                            <i class="fa-solid fa-comments"></i>
-                            <span>Comments</span>
-                        </a>
                     </div>
                 </div>
                 <div class="sidebar-section">
@@ -83,9 +79,15 @@
         <div class="app-main">
             <header class="dashboard-header">
                 <div class="container dashboard-topbar">
-                    <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu">
-                        <i class="fa-solid fa-bars"></i>
-                    </button>
+                    <div class="header-left">
+                        <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu">
+                            <i class="fa-solid fa-bars"></i>
+                        </button>
+                        <a href="dashboard.html" class="header-logo">
+                            <div class="brand-mark-icon"><i class="fa-solid fa-user-secret"></i></div>
+                            <span class="brand-text">CipherPoint</span>
+                        </a>
+                    </div>
                     <div class="dashboard-search">
                         <i class="fa-solid fa-magnifying-glass"></i>
                         <input id="challengeSearch" type="text" placeholder="Search CipherPoint" aria-label="Search">
@@ -93,7 +95,7 @@
                             <i class="fa-solid fa-xmark"></i>
                         </button>
                     </div>
-                    <div class="header-actions">
+                    <div class="header-right">
                         <button class="header-icon-btn" aria-label="Create" title="Create">
                             <i class="fa-solid fa-plus"></i>
                         </button>

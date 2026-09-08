@@ -78,22 +78,35 @@ button, input {
   min-height: 64px;
 }
 
-.brand-wrap {
+.header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
-.brand-mark {
-  display: grid;
+.header-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--text);
+  transition: opacity 0.2s ease;
+}
+
+.header-logo:hover {
+  opacity: 0.85;
+}
+
+.brand-mark-icon {
+  display: inline-grid;
   place-items: center;
   width: 36px;
   height: 36px;
   border-radius: 10px;
   background: linear-gradient(135deg, var(--primary) 0%, var(--teal) 100%);
   color: #08131f;
+  font-size: 1rem;
   font-weight: 800;
-  letter-spacing: 0.08em;
   border: 1px solid var(--line-strong);
 }
 
@@ -101,6 +114,12 @@ button, input {
   font-size: 1.05rem;
   font-weight: 800;
   letter-spacing: 0.04em;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .top-links,
@@ -177,12 +196,6 @@ button, input {
 
 .search-clear:hover {
   color: var(--text);
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
 }
 
 .header-icon-btn {

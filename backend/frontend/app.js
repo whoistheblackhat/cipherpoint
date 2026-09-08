@@ -616,6 +616,18 @@ function bindGlobalEvents() {
     });
   });
 
+  const sectionHeaders = document.querySelectorAll('.sidebar-section-header');
+  sectionHeaders.forEach((header) => {
+    header.addEventListener('click', () => {
+      const section = header.dataset.section;
+      const links = document.querySelector(`.sidebar-section-links[data-section="${section}"]`);
+      if (!links) return;
+      const isCollapsed = links.classList.contains('collapsed');
+      links.classList.toggle('collapsed', !isCollapsed);
+      header.classList.toggle('collapsed', !isCollapsed);
+    });
+  });
+
   const loginForm = safeGetById('loginForm');
   if (loginForm) {
     loginForm.addEventListener('submit', handleLogin);

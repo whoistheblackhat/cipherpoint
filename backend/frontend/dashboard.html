@@ -24,26 +24,54 @@
                 <i class="fa-solid fa-angle-left"></i>
             </button>
             <nav class="sidebar-links">
-                <a href="dashboard.html" class="sidebar-link active">
-                    <i class="fa-solid fa-house"></i>
-                    <span>Dashboard</span>
-                </a>
-                <a href="community.html" class="sidebar-link">
-                    <i class="fa-solid fa-users"></i>
-                    <span>Community</span>
-                </a>
-                <a href="leaderboard.html" class="sidebar-link">
-                    <i class="fa-solid fa-trophy"></i>
-                    <span>Leaderboard</span>
-                </a>
-                <a href="profile.html" class="sidebar-link">
-                    <i class="fa-solid fa-user-astronaut"></i>
-                    <span>Profile</span>
-                </a>
-                <a href="settings.html" class="sidebar-link">
-                    <i class="fa-solid fa-gear"></i>
-                    <span>Settings</span>
-                </a>
+                <div class="sidebar-section">
+                    <button class="sidebar-section-header" data-section="main">
+                        <span>Main</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div class="sidebar-section-links" data-section="main">
+                        <a href="dashboard.html" class="sidebar-link active">
+                            <i class="fa-solid fa-house"></i>
+                            <span>Dashboard</span>
+                        </a>
+                        <a href="leaderboard.html" class="sidebar-link">
+                            <i class="fa-solid fa-trophy"></i>
+                            <span>Leaderboard</span>
+                        </a>
+                    </div>
+                </div>
+                <div class="sidebar-section">
+                    <button class="sidebar-section-header" data-section="social">
+                        <span>Social</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div class="sidebar-section-links" data-section="social">
+                        <a href="community.html" class="sidebar-link">
+                            <i class="fa-solid fa-users"></i>
+                            <span>Community</span>
+                        </a>
+                        <a href="comments.html" class="sidebar-link">
+                            <i class="fa-solid fa-comments"></i>
+                            <span>Comments</span>
+                        </a>
+                    </div>
+                </div>
+                <div class="sidebar-section">
+                    <button class="sidebar-section-header" data-section="account">
+                        <span>Account</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div class="sidebar-section-links" data-section="account">
+                        <a href="profile.html" class="sidebar-link">
+                            <i class="fa-solid fa-user-astronaut"></i>
+                            <span>Profile</span>
+                        </a>
+                        <a href="settings.html" class="sidebar-link">
+                            <i class="fa-solid fa-gear"></i>
+                            <span>Settings</span>
+                        </a>
+                    </div>
+                </div>
             </nav>
             <div class="sidebar-footer">
                 <button id="logoutBtn" class="btn btn-light btn-small btn-block">
@@ -60,10 +88,21 @@
                     </button>
                     <div class="dashboard-search">
                         <i class="fa-solid fa-magnifying-glass"></i>
-                        <input id="challengeSearch" type="text" placeholder="Search case files" aria-label="Search cases">
+                        <input id="challengeSearch" type="text" placeholder="Search CipherPoint" aria-label="Search">
                         <button type="button" id="challengeSearchClear" class="search-clear" aria-label="Clear search" hidden>
                             <i class="fa-solid fa-xmark"></i>
                         </button>
+                    </div>
+                    <div class="header-actions">
+                        <button class="header-icon-btn" aria-label="Create" title="Create">
+                            <i class="fa-solid fa-plus"></i>
+                        </button>
+                        <button class="header-icon-btn" aria-label="Notifications" title="Notifications">
+                            <i class="fa-solid fa-bell"></i>
+                        </button>
+                        <a href="profile.html" class="header-avatar" title="Profile">
+                            <i class="fa-solid fa-user"></i>
+                        </a>
                     </div>
                 </div>
             </header>

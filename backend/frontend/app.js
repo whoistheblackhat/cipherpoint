@@ -1068,6 +1068,10 @@ async function logout() {
   localStorage.removeItem('user');
   setUserDisplayState();
   showToast('✅ Logged out successfully', 'success');
+  // Redirect to login after a short delay so the toast is visible
+  setTimeout(() => {
+    window.location.href = 'login.html';
+  }, 600);
 }
 
 async function handleLogin(event) {

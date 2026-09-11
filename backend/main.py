@@ -777,7 +777,6 @@ def purge_expired_community_challenges():
                     f"Expired community CTFs (> {COMMUNITY_CTF_EXPIRY_DAYS} days): <b>{len(expired_ids)}</b>\n"
                     f"Cascade-deleted comments: {deleted_comments}\n"
                     f"Cascade-deleted hints: {deleted_hints}\n"
-                    f"Cascade-deleted solves: {deleted_solves}\n"
                     f"Cascade-deleted reports: {deleted_reports}"
                 )
             except Exception as e:
@@ -1320,7 +1319,6 @@ def login(payload: UserLoginRequest, request: Request, db: Session = Depends(get
     record_successful_login(user)
 
     # Tokens are only issued once the password is confirmed correct.
-    access_token = issue_token(db, user.id)
     refresh_token = create_access_token(
         data={"sub": user.id},
         expires_minutes=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60,
@@ -1328,34 +1326,34 @@ def login(payload: UserLoginRequest, request: Request, db: Session = Depends(get
     )
     # Register the refresh token in active_tokens for revocation tracking.
     try:
-        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_exp": False})
+        rt_payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_exp": False})
         db.add(ActiveToken(
-            jti=payload.get("jti"),
+            jti=rt_payload.get("jti"),
             user_id=user.id,
-            expires_at=datetime.utcfromtimestamp(payload.get("exp")),
+            expires_at=datetime.utcfromtimestamp(rt_payload.get("exp")),
             token_type="refresh",
         ))
         db.commit()
     except Exception as exc:
         print(f"[auth] failed to register refresh token: {exc}")
         db.rollback()
-    db.commit()
+
     rate_limit_reset(f"login_user:{user.id}")
 
     ensure_user_not_banned(user.id, db)
-    
+
     # Login anomaly detection: track IP/UA changes
     login_ip = request.state.real_ip
     login_ua = (request.headers.get("user-agent") or "").strip()[:256]
-    
+
     if user.last_login_ip and user.last_login_ip != login_ip:
         user.flagged_for_review = True
     if user.last_login_user_agent and user.last_login_user_agent != login_ua:
         user.flagged_for_review = True
-    
+
     user.last_login_ip = login_ip
     user.last_login_user_agent = login_ua
-    
+
     # Update IP history (keep last 10)
     try:
         history = []
@@ -1368,10 +1366,9 @@ def login(payload: UserLoginRequest, request: Request, db: Session = Depends(get
         user.login_ip_history = json.dumps(history)
     except Exception:
         pass
-    
-    db.commit()
 
     access_token = issue_token(db, user.id)
+    db.commit()
     return {
         "id": user.id,
         "username": user.username,

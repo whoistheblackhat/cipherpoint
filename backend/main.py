@@ -113,6 +113,13 @@ def maintenance_status_payload() -> dict:
     }
 
 
+def _is_mobile_app_request(request: Request) -> bool:
+    """Returns True if the request is from the CipherPoint mobile app.
+    Mobile apps cannot complete browser-based Turnstile challenges."""
+    ua = (request.headers.get("user-agent") or "").lower()
+    return "cipherpoint" in ua or "dart" in ua or "okhttp" in ua
+
+
 def verify_turnstile_token(token: str | None, remote_ip: str | None = None) -> bool:
     if not TURNSTILE_SECRET_KEY or not TURNSTILE_ENABLED:
         return True
@@ -741,8 +748,8 @@ def purge_expired_community_challenges():
             Challenge.is_community == True,
             Challenge.created_at < cutoff,
         ).all()
-        solved_ids_subq = db.query(SolvedChallenge.challenge_id).subquery()
-        expired = [c for c in candidate if c.id not in {row[0] for row in db.query(SolvedChallenge.challenge_id).filter(SolvedChallenge.challenge_id.in_([c.id for c in candidate])).all()}]
+        solved_ids = {row[0] for row in db.query(SolvedChallenge.challenge_id).filter(SolvedChallenge.challenge_id.in_([c.id for c in candidate])).all()}
+        expired = [c for c in candidate if c.id not in solved_ids]
 
         if not expired:
             return 0
@@ -1003,10 +1010,6 @@ def ensure_user_not_banned(user_id: int, db: Session):
     raise HTTPException(status_code=403, detail="Your account has been suspended.")
 
 
-class CommentCreateRequest(BaseModel):
-    body: str
-
-
 # ==================== COMMENT ROUTES ====================
 
 class CommentCreateRequest(BaseModel):
@@ -1054,7 +1057,6 @@ def list_comments(challenge_id: int, db: Session = Depends(get_db)):
         return {
             "id": c.id,
             "challenge_id": c.challenge_id,
-            "user_id": c.user_id,
             "username": users.get(c.user_id, "unknown"),
             "body": c.body,
             "parent_id": c.parent_id,
@@ -1063,7 +1065,6 @@ def list_comments(challenge_id: int, db: Session = Depends(get_db)):
                 {
                     "id": r.id,
                     "challenge_id": r.challenge_id,
-                    "user_id": r.user_id,
                     "username": users.get(r.user_id, "unknown"),
                     "body": r.body,
                     "parent_id": r.parent_id,
@@ -1126,7 +1127,6 @@ def create_comment(
     return {
         "id": new_comment.id,
         "challenge_id": new_comment.challenge_id,
-        "user_id": new_comment.user_id,
         "username": author.username if author else "unknown",
         "body": new_comment.body,
         "parent_id": new_comment.parent_id,
@@ -1150,7 +1150,7 @@ def signup(payload: UserSignupRequest, request: Request, db: Session = Depends(g
     """
     if TURNSTILE_SECRET_KEY and TURNSTILE_ENABLED:
         remote_ip = request.state.real_ip
-        if not verify_turnstile_token(payload.turnstile_token, remote_ip):
+        if not _is_mobile_app_request(request) and not verify_turnstile_token(payload.turnstile_token, remote_ip):
             raise HTTPException(status_code=403, detail="Turnstile verification failed. Please complete the security check.")
 
     # Per-IP rate limit (defense against mass account creation / spam)
@@ -1255,7 +1255,7 @@ def login(payload: UserLoginRequest, request: Request, db: Session = Depends(get
     """
     if TURNSTILE_SECRET_KEY and TURNSTILE_ENABLED:
         remote_ip = request.state.real_ip
-        if not verify_turnstile_token(payload.turnstile_token, remote_ip):
+        if not _is_mobile_app_request(request) and not verify_turnstile_token(payload.turnstile_token, remote_ip):
             raise HTTPException(status_code=403, detail="Turnstile verification failed. Please complete the security check.")
 
     # Per-IP rate limit (defense against credential stuffing)
@@ -1806,8 +1806,6 @@ def get_profile(user_id: int = Depends(verify_token), db: Session = Depends(get_
         "telegram_chat_id": user.telegram_chat_id,
         "telegram_notifications": user.telegram_notifications
     }
-
-from pydantic import BaseModel
 
 class ProfileUpdate(BaseModel):
     username: str | None = None
@@ -2460,8 +2458,16 @@ def request_password_reset(payload: PasswordResetRequest, request: Request, db: 
 
 
 @app.post("/api/auth/password-reset/confirm")
-def confirm_password_reset(payload: PasswordResetConfirm, db: Session = Depends(get_db)):
+def confirm_password_reset(payload: PasswordResetConfirm, request: Request, db: Session = Depends(get_db)):
     from datetime import datetime
+    ip = request.state.real_ip
+    allowed, retry = rate_limit_check(f"reset_confirm:{ip}", max_events=10, window_seconds=3600)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many reset attempts. Try again in {retry}s.",
+            headers={"Retry-After": str(retry)},
+        )
     user = db.query(User).filter(User.reset_token == payload.reset_token).first()
     if not user:
         raise HTTPException(status_code=400, detail="Invalid or expired token")
@@ -2526,12 +2532,11 @@ def get_all_challenges(limit: Optional[int] = None, db: Session = Depends(get_db
             "category": challenge.category,
             "difficulty": challenge.difficulty,
             "description": challenge.description,
-            "telegram_file_id": challenge.telegram_file_id,
+            "media_url": f"/api/media/{challenge.telegram_file_id}" if challenge.telegram_file_id else None,
             "points_reward": challenge.points_reward,
             "solved_count": solved_count,
             "status": challenge.status,
             "is_community": bool(challenge.is_community),
-            "created_by": challenge.created_by,
             "comments_count": comment_counts.get(challenge.id, 0),
             "has_walkthrough": bool(challenge.solution_walkthrough),
             "created_at": challenge.created_at
@@ -2561,11 +2566,10 @@ def get_community_challenges(db: Session = Depends(get_db)):
             "category": challenge.category,
             "difficulty": challenge.difficulty,
             "description": challenge.description,
-            "telegram_file_id": challenge.telegram_file_id,
+            "media_url": f"/api/media/{challenge.telegram_file_id}" if challenge.telegram_file_id else None,
             "points_reward": challenge.points_reward,
             "solved_count": solved_count,
             "status": challenge.status,
-            "created_by": challenge.created_by,
             "comments_count": comment_counts.get(challenge.id, 0),
             "tags": challenge.tags or "",
             "created_at": challenge.created_at,
@@ -2627,7 +2631,7 @@ def get_challenge_details(
         "category": challenge.category,
         "difficulty": challenge.difficulty,
         "description": challenge.description,
-        "telegram_file_id": challenge.telegram_file_id,
+        "media_url": f"/api/media/{challenge.telegram_file_id}" if challenge.telegram_file_id else None,
         "points_reward": challenge.points_reward,
         "has_hint_1": bool(challenge.hint_1),
         "has_hint_2": bool(challenge.hint_2),
@@ -2636,7 +2640,6 @@ def get_challenge_details(
         "tags": challenge.tags,
         "solution_walkthrough": (challenge.solution_walkthrough or None) if show_walkthrough else None,
         "can_view_walkthrough": show_walkthrough,
-        "created_by": challenge.created_by,
         "is_community": bool(challenge.is_community),
         "status": challenge.status,
         "solved_count": solved_count,
@@ -3498,13 +3501,10 @@ def get_leaderboard(limit: int = 100, db: Session = Depends(get_db)):
             badges.append("guardian")
         result.append({
             "rank": idx,
-            "user_id": user.id,
             "username": user.username,
             "rank_points": rank_points,
-            "coins": coins,
             "solved_count": solved_count,
             "badges": badges,
-            "is_admin": bool(user.is_admin),
         })
 
     return result

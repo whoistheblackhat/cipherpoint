@@ -1454,7 +1454,7 @@ function renderCommunityChallenges() {
         <div class="challenge-title">${escapeHtml(challenge.title)}</div>
 
         <div class="challenge-media">
-          ${renderMedia(challenge.telegram_file_id)}
+          ${renderMedia(challenge.media_url)}
         </div>
 
         <div class="challenge-description">
@@ -2430,7 +2430,7 @@ async function renderTopChallenges() {
     container.innerHTML = challenges.slice(0, 5).map((challenge) => `
       <div class="sidebar-item" onclick="openChallengeModal(${challenge.id})">
         <div class="sidebar-item-thumb">
-          ${challenge.telegram_file_id ? `<img src="/api/media/${encodeURIComponent(challenge.telegram_file_id)}" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='<i class=\\'fa-solid fa-image\\' style=\\'color:#8b949e;font-size:1.2rem;\\'></i>';" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">` : '<i class="fa-solid fa-image" style="color:#8b949e;font-size:1.2rem;"></i>'}
+          ${challenge.telegram_file_id ? `<img src="${challenge.media_url}" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='<i class=\\'fa-solid fa-image\\' style=\\'color:#8b949e;font-size:1.2rem;\\'></i>';" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">` : '<i class="fa-solid fa-image" style="color:#8b949e;font-size:1.2rem;"></i>'}
         </div>
         <div class="sidebar-item-body">
           <div class="sidebar-item-title">${escapeHtml(challenge.title)}</div>
@@ -2487,13 +2487,11 @@ async function renderRecentActivity() {
   }
 }
 
-function renderMedia(fileId) {
-  if (!fileId) {
+function renderMedia(mediaUrl) {
+  if (!mediaUrl) {
     return '<span class="media-placeholder"><i class="fa-solid fa-image"></i><span>Media unavailable</span></span>';
   }
-  const mediaUrl = `/api/media/${encodeURIComponent(fileId)}`;
-  const safeId = encodeURIComponent(fileId);
-  const downloadHref = `/api/media/${safeId}?download=1`;
+  const downloadHref = `${mediaUrl}?download=1`;
   const downloadBtn = `<a class="media-download-btn" href="${downloadHref}" download title="Download to inspect metadata locally"><i class="fa-solid fa-download"></i><span>Download</span></a>`;
   // All uploads now go through sendDocument to preserve EXIF/metadata,
   // so file_id prefix is no longer a reliable video hint. We render an
@@ -2889,7 +2887,7 @@ function renderChallenges() {
         <div class="challenge-title">${escapeHtml(challenge.title)}</div>
 
         <div class="challenge-media">
-          ${renderMedia(challenge.telegram_file_id)}
+          ${renderMedia(challenge.media_url)}
         </div>
 
         <div class="challenge-description">
@@ -2941,7 +2939,7 @@ async function loadChallengeDetailPage(challengeId) {
     if (safeGetById('detailTime')) safeGetById('detailTime').textContent = `• ${challenge.created_at ? new Date(challenge.created_at).toLocaleDateString() : 'Today'}`;
     if (safeGetById('detailDifficulty')) safeGetById('detailDifficulty').textContent = escapeHtml(challenge.difficulty || 'Open');
     if (safeGetById('detailTitle')) safeGetById('detailTitle').textContent = challenge.title;
-    if (safeGetById('detailMedia')) safeGetById('detailMedia').innerHTML = renderMedia(challenge.telegram_file_id ? challenge.telegram_file_id : '');
+    if (safeGetById('detailMedia')) safeGetById('detailMedia').innerHTML = renderMedia(challenge.media_url || '');
     if (safeGetById('detailDescription')) safeGetById('detailDescription').textContent = challenge.description || '';
     if (safeGetById('detailReward')) safeGetById('detailReward').textContent = `${challenge.points_reward} Coins`;
     if (safeGetById('detailSolved')) safeGetById('detailSolved').textContent = `${challenge.solved_count || 0} Analysts`;
@@ -3074,16 +3072,6 @@ async function loadCommentsPage(challengeId) {
   }
 }
 
-function toggleOptionsMenu(event) {
-  if (event) event.stopPropagation();
-  const dropdown = event ? event.target.closest('.challenge-options-dropdown')?.querySelector('.dropdown-menu') : safeGetById('optionsDropdown');
-  if (dropdown) {
-    const isOpen = dropdown.style.display === 'block';
-    document.querySelectorAll('.dropdown-menu').forEach(m => m.style.display = 'none');
-    dropdown.style.display = isOpen ? 'none' : 'block';
-  }
-}
-
 function reportCurrentChallenge() {
   const challengeId = Number(document.body.dataset.challengeId) || Number(new URLSearchParams(window.location.search).get('id'));
   if (challengeId) {
@@ -3197,7 +3185,7 @@ function renderChallengeModal(challenge) {
       <div class="modal-title">${escapeHtml(challenge.title)}</div>
 
       <div class="modal-media">
-        ${renderMedia(challenge.telegram_file_id ? challenge.telegram_file_id : '')}
+        ${renderMedia(challenge.media_url || '')}
       </div>
 
       <div class="modal-description">

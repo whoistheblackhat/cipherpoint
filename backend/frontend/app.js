@@ -928,7 +928,7 @@ function setUserDisplayState() {
   if (profileUsername && currentUser) profileUsername.textContent = currentUser.username;
 
   const profileEmail = safeGetById('profileEmail');
-  if (profileEmail && currentUser) profileEmail.textContent = currentUser.email || '-';
+  if (profileEmail && currentUser) profileEmail.textContent = (currentUser.hide_email ? null : currentUser.email) || '-';
 
   updateBonusButtonState();
   updateModerationWidget();
@@ -1953,10 +1953,15 @@ async function submitProfileEdit(event) {
     return;
   }
 
+  const avatarVal = safeGetById('editProfileAvatar')?.value?.trim() || null;
+  if (avatarVal && !/^https?:\/\//i.test(avatarVal)) {
+    showToast('❌ Avatar URL must start with http:// or https://', 'error');
+    return;
+  }
   const payload = {
     username: safeGetById('editProfileUsername')?.value,
     bio: safeGetById('editProfileBio')?.value,
-    avatar_url: safeGetById('editProfileAvatar')?.value || null
+    avatar_url: avatarVal
   };
 
   try {
@@ -2259,10 +2264,14 @@ async function submitNotificationSettings(event) {
     return;
   }
 
+  const notifyNewChallengesEl = safeGetById('notifyNewChallenges');
+  const notifyCommentsEl = safeGetById('notifyComments');
+  const notifyMentionsEl = safeGetById('notifyMentions');
+  if (!notifyNewChallengesEl || !notifyCommentsEl || !notifyMentionsEl) return;
   const payload = {
-    notify_new_challenges: safeGetById('notifyNewChallenges')?.checked ?? true,
-    notify_comments: safeGetById('notifyComments')?.checked ?? true,
-    notify_mentions: safeGetById('notifyMentions')?.checked ?? true
+    notify_new_challenges: notifyNewChallengesEl.checked,
+    notify_comments: notifyCommentsEl.checked,
+    notify_mentions: notifyMentionsEl.checked
   };
 
   try {
@@ -2309,9 +2318,12 @@ async function submitPrivacySettings(event) {
     return;
   }
 
+  const hideEmailEl = safeGetById('hideEmail');
+  const publicProfileEl = safeGetById('publicProfile');
+  if (!hideEmailEl || !publicProfileEl) return;
   const payload = {
-    hide_email: safeGetById('hideEmail')?.checked ?? true,
-    public_profile: safeGetById('publicProfile')?.checked ?? true
+    hide_email: hideEmailEl.checked,
+    public_profile: publicProfileEl.checked
   };
 
   try {
@@ -3361,6 +3373,10 @@ function getAvatarColor(name) {
   return `hsl(${hue}, 65%, 60%)`;
 }
 
+function renderMentions(text) {
+  return escapeHtml(text).replace(/@([A-Za-z0-9_.-]{3,32})/g, '<span class="mention">@$1</span>');
+}
+
 function renderRedditComment(comment, challengeId, depth) {
   const voteCount = comment.upvotes || 0;
   const isCollapsed = comment.collapsed ? 'collapsed' : '';
@@ -3392,7 +3408,7 @@ function renderRedditComment(comment, challengeId, depth) {
           <span class="comment-badge">Analyst</span>
           <span class="comment-time">${comment.created_at ? new Date(comment.created_at).toLocaleString() : 'just now'}</span>
         </div>
-        <div class="comment-text">${escapeHtml(comment.body || '')}</div>
+        <div class="comment-text">${renderMentions(comment.body || '')}</div>
         <div class="comment-actions-bar">
           <button class="comment-action" onclick="replyToComment(${comment.id}, ${challengeId})">
             <i class="fa-solid fa-reply"></i> Reply
@@ -3834,7 +3850,8 @@ async function loadFullLeaderboard() {
     const totalEl = safeGetById('totalAnalysts');
 
     const myId = currentUser?.id || null;
-    const me = myId ? leaderboard.find((u) => Number(u.user_id) === Number(myId)) : null;
+    const myUsername = currentUser?.username || null;
+    const me = myUsername ? leaderboard.find((u) => u.username === myUsername) : null;
 
     if (me) {
       if (yourRankEl) yourRankEl.textContent = `#${me.rank}`;
@@ -3857,12 +3874,12 @@ async function loadFullLeaderboard() {
       return;
     }
 
-    const meInList = myId ? leaderboard.find((u) => Number(u.user_id) === Number(myId)) : null;
+    const meInList = myUsername ? leaderboard.find((u) => u.username === myUsername) : null;
     const rows = leaderboard.map((user) => {
       const rankClass = user.rank === 1 ? 'top1' : user.rank === 2 ? 'top2' : user.rank === 3 ? 'top3' : '';
       const rankLabel = user.rank <= 3 ? ['\uD83C\uDFC7','\uD83C\uDFC8','\uD83C\uDFC9'][user.rank - 1] : `#${user.rank}`;
       const initial = (user.username || '?').charAt(0).toUpperCase();
-      const isYou = Number(user.user_id) === Number(myId);
+      const isYou = user.username === myUsername;
       return `
         <tr class="${isYou ? 'you' : ''}">
           <td><span class="rank-pill ${rankClass}">${rankLabel}</span></td>
@@ -3882,7 +3899,7 @@ async function loadFullLeaderboard() {
       `;
     }).join('');
 
-    if (myId && !meInList && currentUser) {
+    if (myUsername && !meInList && currentUser) {
       const youRow = `
         <tr class="you you-separator">
           <td><span class="rank-pill you-rank">\uD83D\uDC64</span></td>

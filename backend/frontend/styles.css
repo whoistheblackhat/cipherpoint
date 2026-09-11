@@ -1648,6 +1648,13 @@ button, input {
   word-break: break-word;
   margin-bottom: 8px;
 }
+.mention {
+  color: #58a6ff;
+  font-weight: 600;
+  background: rgba(88,166,255,0.1);
+  border-radius: 4px;
+  padding: 0 3px;
+}
 
 .reddit-comment .comment-actions-bar {
   display: flex;

@@ -1124,6 +1124,41 @@ def create_comment(
     db.commit()
 
     author = db.query(User).filter(User.id == user_id).first()
+
+    # Mention detection — find all @username tokens in the comment body,
+    # look up each mentioned user, and send a Telegram notification if:
+    #   - they have a linked Telegram chat
+    #   - they have notify_mentions enabled
+    #   - they are not the comment author (no self-notify)
+    mentioned_usernames = set(re.findall(r"@([A-Za-z0-9_.-]{3,32})", body))
+    if mentioned_usernames:
+        author_username = author.username if author else ""
+        for username in mentioned_usernames:
+            if username.lower() == author_username.lower():
+                continue
+            mentioned_user = db.query(User).filter(
+                func.lower(User.username) == username.lower()
+            ).first()
+            if not mentioned_user:
+                continue
+            if not mentioned_user.telegram_chat_id:
+                continue
+            if not mentioned_user.notify_mentions:
+                continue
+            try:
+                challenge_title = escape_html(challenge.title or f"Challenge #{challenge_id}")
+                author_name = escape_html(author_username or "Someone")
+                preview = escape_html(body[:200] + ("..." if len(body) > 200 else ""))
+                send_user_notification(
+                    mentioned_user.telegram_chat_id,
+                    f"🔔 <b>You were mentioned</b>\n\n"
+                    f"<b>{author_name}</b> mentioned you in a comment on "
+                    f"<b>{challenge_title}</b>:\n\n"
+                    f"<i>{preview}</i>"
+                )
+            except Exception as e:
+                print(f"[MENTION] Notification failed for user {mentioned_user.id}: {e}")
+
     return {
         "id": new_comment.id,
         "challenge_id": new_comment.challenge_id,
@@ -1705,6 +1740,11 @@ def get_current_user(user_id: int = Depends(verify_token), db: Session = Depends
         "first_solve_at": user.first_solve_at.isoformat() if user.first_solve_at else None,
         "flagged_for_review": bool(user.flagged_for_review),
         "created_at": user.created_at,
+        "notify_new_challenges": user.notify_new_challenges,
+        "notify_comments": user.notify_comments,
+        "notify_mentions": user.notify_mentions,
+        "telegram_chat_id": user.telegram_chat_id,
+        "telegram_notifications": user.telegram_notifications,
     }
 
 
@@ -1819,15 +1859,24 @@ def update_profile(update: ProfileUpdate, user_id: int = Depends(verify_token), 
         raise HTTPException(status_code=404, detail="User not found")
 
     if update.username and update.username != user.username:
+        ok, reason = is_valid_username(update.username)
+        if not ok:
+            raise HTTPException(status_code=400, detail=reason)
         existing = db.query(User).filter(User.username == update.username).first()
         if existing and existing.id != user_id:
             raise HTTPException(status_code=400, detail="Username already taken")
         user.username = update.username
 
     if update.bio is not None:
+        if len(update.bio) > 500:
+            raise HTTPException(status_code=400, detail="Bio is too long (max 500 characters)")
         user.bio = update.bio
 
     if update.avatar_url is not None:
+        if len(update.avatar_url) > 500:
+            raise HTTPException(status_code=400, detail="Avatar URL is too long (max 500 characters)")
+        if update.avatar_url and not re.match(r"^https?://", update.avatar_url):
+            raise HTTPException(status_code=400, detail="Avatar URL must start with http:// or https://")
         user.avatar_url = update.avatar_url
 
     db.commit()
@@ -1842,8 +1891,6 @@ def update_profile(update: ProfileUpdate, user_id: int = Depends(verify_token), 
         "bio": user.bio,
         "avatar_url": user.avatar_url,
         "created_at": user.created_at,
-        "telegram_chat_id": user.telegram_chat_id,
-        "telegram_notifications": user.telegram_notifications
     }
 
 class TelegramConnectRequest(BaseModel):
@@ -3139,8 +3186,7 @@ def list_intel_articles(category: Optional[str] = None, db: Session = Depends(ge
             "title": a.title,
             "category": a.category,
             "summary": a.summary,
-            "telegram_file_id": a.telegram_file_id,
-            "author_id": a.author_id,
+            "media_url": f"/api/media/{a.telegram_file_id}" if a.telegram_file_id else None,
             "created_at": a.created_at.isoformat() if a.created_at else None,
             "updated_at": a.updated_at.isoformat() if a.updated_at else None,
         }
@@ -3202,8 +3248,7 @@ def get_intel_article(article_id: int, db: Session = Depends(get_db)):
         "category": article.category,
         "content": article.content,
         "summary": article.summary,
-        "telegram_file_id": article.telegram_file_id,
-        "author_id": article.author_id,
+        "media_url": f"/api/media/{article.telegram_file_id}" if article.telegram_file_id else None,
         "created_at": article.created_at.isoformat() if article.created_at else None,
         "updated_at": article.updated_at.isoformat() if article.updated_at else None,
     }

@@ -1910,7 +1910,7 @@ function openProfileEditModal() {
   if (!container) return;
 
   container.innerHTML = `
-    <form id="profileEditForm" class="community-form">
+    <form id="profileEditForm" class="profile-edit-form">
       <div class="form-header">
         <div>
           <span class="eyebrow">Edit</span>
@@ -1931,7 +1931,10 @@ function openProfileEditModal() {
         <span>Bio</span>
         <textarea id="editProfileBio" rows="3" placeholder="Tell us about yourself...">${escapeHtml(currentUser.bio || '')}</textarea>
       </label>
-      <button type="submit" class="btn btn-primary btn-block">Save Changes</button>
+      <div class="form-actions">
+        <button type="button" class="btn btn-light btn-small" onclick="closeEditModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary btn-small">Save Changes</button>
+      </div>
     </form>
   `;
 
@@ -3253,51 +3256,120 @@ function toggleComments() {
   }
 }
 
-async function loadComments(challengeId) {
+async function loadComments(challengeId, fallbackComment = null) {
   const list = safeGetById('redditCommentsList');
   const countLabel = safeGetById('totalCommentsCount');
   const composer = safeGetById('commentsComposerTop');
-  if (!list) return;
+  if (!list) return false;
 
-  try {
-    const response = await fetch(`${API_BASE_URL}/challenges/${challengeId}/comments`);
-    if (!response.ok) throw new Error('Comments fetch failed');
-    const comments = await response.json();
+  const previousHtml = list.innerHTML;
+  const previousCount = countLabel ? countLabel.textContent : '0';
+  let lastError = null;
 
-    if (countLabel) countLabel.textContent = comments.length;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/challenges/${challengeId}/comments`);
+      if (!response.ok) throw new Error(`Comments fetch failed (${response.status})`);
+      const comments = mergeFallbackComment(await response.json(), fallbackComment);
 
-    if (!comments.length) {
-      list.innerHTML = '<div class="comments-empty">No discussion yet. Be the first to share a thought.</div>';
-    } else {
-      const sorted = sortComments(comments, commentsSortMode);
-      list.innerHTML = sorted.map((comment) => renderRedditComment(comment, challengeId, 0)).join('');
-    }
+      if (countLabel) countLabel.textContent = comments.length;
 
-    if (composer) {
-      composer.innerHTML = currentUser
-        ? `
-          <div class="comment-form" style="margin-bottom:24px;">
-            <textarea id="commentInput" maxlength="2000" placeholder="Share your findings, hints, or feedback..." rows="3"></textarea>
-            <div class="comment-form-meta">
-              <span id="commentCharCount">0 / 2000</span>
-              <button type="button" class="btn btn-primary btn-small" onclick="submitTopLevelComment(${challengeId})">Post Comment</button>
+      if (!comments.length) {
+        list.innerHTML = '<div class="comments-empty">No discussion yet. Be the first to share a thought.</div>';
+      } else {
+        const sorted = sortComments(comments, commentsSortMode);
+        list.innerHTML = sorted.map((comment) => renderRedditComment(comment, challengeId, 0)).join('');
+      }
+
+      if (composer) {
+        composer.innerHTML = currentUser
+          ? `
+            <div class="comment-form" style="margin-bottom:24px;">
+              <textarea id="commentInput" maxlength="2000" placeholder="Share your findings, hints, or feedback..." rows="3"></textarea>
+              <div class="comment-form-meta">
+                <span id="commentCharCount">0 / 2000</span>
+                <button type="button" class="btn btn-primary btn-small" onclick="submitTopLevelComment(${challengeId})">Post Comment</button>
+              </div>
             </div>
-          </div>
-        `
-        : `<div class="comment-login-prompt" style="margin-bottom:24px;">Sign in to join the discussion.</div>`;
-    }
+          `
+          : `<div class="comment-login-prompt" style="margin-bottom:24px;">Sign in to join the discussion.</div>`;
+      }
 
-    const input = safeGetById('commentInput');
-    if (input) {
-      const counter = safeGetById('commentCharCount');
-      input.addEventListener('input', () => {
-        if (counter) counter.textContent = `${input.value.length} / 2000`;
-      });
+      const input = safeGetById('commentInput');
+      if (input) {
+        const counter = safeGetById('commentCharCount');
+        input.addEventListener('input', () => {
+          if (counter) counter.textContent = `${input.value.length} / 2000`;
+        });
+      }
+      return true;
+    } catch (error) {
+      lastError = error;
+      if (attempt === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
     }
-  } catch (error) {
-    console.error('Error loading comments:', error);
-    list.innerHTML = '<div class="comments-empty">Unable to load discussion.</div>';
   }
+
+  console.error('Error loading comments:', lastError);
+  if (fallbackComment) {
+    appendComment(fallbackComment, challengeId);
+    showToast('Comment posted, but the discussion refresh failed. Refresh the page if it does not appear.', 'error');
+  } else if (previousHtml && !previousHtml.includes('Unable to load discussion')) {
+    list.innerHTML = previousHtml;
+    if (countLabel) countLabel.textContent = previousCount;
+    showToast('Unable to refresh the discussion. Existing comments are still shown.', 'error');
+  } else {
+    list.innerHTML = `<div class="comments-empty">Unable to load discussion. <button type="button" class="btn btn-light btn-small" onclick="loadComments(${challengeId})">Retry</button></div>`;
+  }
+  return false;
+}
+
+function mergeFallbackComment(comments, fallbackComment) {
+  if (!fallbackComment || !Array.isArray(comments)) return comments;
+  if (comments.some((comment) => comment.id === fallbackComment.id)) return comments;
+
+  const merged = [...comments];
+  if (fallbackComment.parent_id) {
+    const parent = findComment(merged, fallbackComment.parent_id);
+    if (parent) {
+      parent.replies = [...(parent.replies || []), fallbackComment];
+      return merged;
+    }
+  }
+
+  merged.push(fallbackComment);
+  return merged;
+}
+
+function findComment(comments, commentId) {
+  for (const comment of comments) {
+    if (comment.id === commentId) return comment;
+    const found = findComment(comment.replies || [], commentId);
+    if (found) return found;
+  }
+  return null;
+}
+
+function appendComment(comment, challengeId) {
+  const list = safeGetById('redditCommentsList');
+  const countLabel = safeGetById('totalCommentsCount');
+  if (!list || !comment) return;
+
+  if (list.querySelector(`[data-comment-id="${comment.id}"]`)) return;
+
+  if (comment.parent_id) {
+    const repliesThread = list.querySelector(`[data-comment-id="${comment.parent_id}"] .replies-thread`);
+    if (repliesThread) {
+      repliesThread.insertAdjacentHTML('beforeend', renderRedditComment(comment, challengeId, 1));
+      return;
+    }
+  }
+
+  const emptyState = list.querySelector('.comments-empty');
+  if (emptyState) emptyState.remove();
+  list.insertAdjacentHTML('beforeend', renderRedditComment(comment, challengeId, 0));
+  if (countLabel) countLabel.textContent = String(Number(countLabel.textContent || 0) + 1);
 }
 
 let commentsSortMode = 'best';
@@ -3468,9 +3540,10 @@ async function submitTopLevelComment(challengeId) {
       return;
     }
 
+    appendComment(data, challengeId);
     input.value = '';
     showToast('✅ Comment posted', 'success');
-    await loadComments(challengeId);
+    await loadComments(challengeId, data);
   } catch (error) {
     console.error('Error posting comment:', error);
     showToast('❌ Unable to post comment', 'error');
@@ -3540,7 +3613,7 @@ async function submitReply(event) {
     }
     showToast('✅ Reply posted', 'success');
     closeReplyModal();
-    await loadComments(replyChallengeId);
+    await loadComments(replyChallengeId, data);
   } catch (error) {
     console.error('Error posting reply:', error);
     if (messageEl) { messageEl.className = 'form-message show error'; messageEl.textContent = 'Unable to post reply'; }

@@ -3477,10 +3477,63 @@ body[data-page="signup"] > canvas#networkCanvas {
     flex: 1;
   }
   .hero {
+    grid-template-columns: 1fr;
+    gap: 32px;
     padding: 48px 0 28px;
+    text-align: center;
   }
   .hero-copy h1 {
     font-size: clamp(1.8rem, 5vw, 2.6rem);
+  }
+  .cta-row {
+    justify-content: center;
+  }
+  .hero-stats {
+    justify-content: center;
+  }
+  .hero-stats div {
+    min-width: 100px;
+  }
+  .topbar {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    min-height: auto;
+    padding: 12px 0;
+  }
+  .top-links {
+    display: none;
+  }
+  .top-links.mobile-open {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    padding: 12px 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    margin: 8px 0;
+  }
+  .features-grid {
+    grid-template-columns: 1fr;
+  }
+  .timeline {
+    grid-template-columns: 1fr;
+  }
+  .timeline-step {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .panel-box {
+    flex-direction: column;
+    text-align: center;
+  }
+  .footer-inner {
+    flex-direction: column;
+    text-align: center;
+  }
+  .footer-links {
+    flex-wrap: wrap;
+    justify-content: center;
   }
 }
 

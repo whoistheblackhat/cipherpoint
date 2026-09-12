@@ -152,6 +152,32 @@ button, input {
   gap: 10px;
 }
 
+.mobile-menu-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.mobile-menu-toggle:hover {
+  background: rgba(255,255,255,0.08);
+  color: var(--primary);
+}
+
+@media (max-width: 640px) {
+  .mobile-menu-toggle {
+    display: flex;
+  }
+}
+
 .dashboard-search {
   position: relative;
   max-width: 480px;
@@ -1143,6 +1169,86 @@ button, input {
 .hint-modal-coins strong {
   color: var(--text);
   font-weight: 700;
+}
+
+/* ===== Profile Edit Modal ===== */
+.profile-edit-form {
+  padding: 4px 0 8px;
+}
+
+.profile-edit-form .form-header {
+  margin-bottom: 24px;
+}
+
+.profile-edit-form .field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.profile-edit-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.profile-edit-form label > span {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.profile-edit-form input,
+.profile-edit-form textarea {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.8rem 1rem;
+  color: var(--text);
+  font-size: 0.95rem;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.profile-edit-form input:focus,
+.profile-edit-form textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: rgba(91, 179, 255, 0.05);
+  box-shadow: 0 0 0 3px rgba(91, 179, 255, 0.15);
+}
+
+.profile-edit-form input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.profile-edit-form .form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.profile-edit-form .btn-small {
+  padding: 0.7rem 1.2rem;
+  border-radius: 10px;
+}
+
+@media (max-width: 640px) {
+  .profile-edit-form .field-grid {
+    grid-template-columns: 1fr;
+  }
+  .profile-edit-form .form-actions {
+    flex-direction: column-reverse;
+  }
+  .profile-edit-form .form-actions .btn {
+    width: 100%;
+  }
 }
 
 .telegram-status {
@@ -3511,6 +3617,34 @@ body[data-page="signup"] > canvas#networkCanvas {
     border-top: 1px solid var(--line);
     border-bottom: 1px solid var(--line);
     margin: 8px 0;
+    gap: 4px;
+  }
+  .top-links.mobile-open a {
+    padding: 14px 16px;
+    border-radius: 10px;
+    color: var(--muted);
+    font-weight: 500;
+    font-size: 1rem;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid transparent;
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  }
+  .top-links.mobile-open a:hover {
+    background: rgba(91, 179, 255, 0.1);
+    border-color: var(--line);
+    color: var(--text);
+  }
+  .top-actions {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .top-actions .btn {
+    flex: 1;
+    min-width: 140px;
+    text-align: center;
   }
   .features-grid {
     grid-template-columns: 1fr;

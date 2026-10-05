@@ -369,7 +369,7 @@
 
         <div class="api-card" style="text-align:center;">
             <h2 style="justify-content:center;"><i class="fa-solid fa-circle-info"></i> Conventions</h2>
-            <p>All requests/responses are <code>application/json</code> unless noted. JWTs expire in 30 minutes — re-authenticate on <code>401</code>. All write endpoints enforce per-IP and per-user rate limits. All admin endpoints require <code>is_admin=true</code> on the JWT subject.</p>
+            <p>All requests/responses are <code>application/json</code> unless noted. Access tokens expire in <strong>15 minutes</strong>; the frontend silently refreshes them via <code>POST /api/auth/refresh</code> (7-day rotating refresh token). All write endpoints enforce per-IP and per-user rate limits. All admin endpoints require <code>is_admin=true</code> on the JWT subject.</p>
         </div>
     </main>
 

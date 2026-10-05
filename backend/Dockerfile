@@ -23,7 +23,10 @@ RUN pip install --no-cache-dir --force-reinstall -r requirements.txt
 COPY . .
 
 # Data directory for any local SQLite fallback (not used in Turso mode)
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data && useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+
+# ffprobe runs on untrusted uploaded video — never do that as root.
+USER appuser
 
 # Defaults — Render overrides via env vars
 ENV ENV=production \

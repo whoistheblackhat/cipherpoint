@@ -25,6 +25,7 @@ import time
 import traceback
 import requests
 import hmac
+import hashlib
 from dotenv import load_dotenv
 from typing import Optional
 import json
@@ -62,6 +63,9 @@ if not SECRET_KEY or SECRET_KEY == "your-secret-key-change-in-production":
 TURNSTILE_SITE_KEY = os.getenv("SITE_KEY", "").strip()
 TURNSTILE_SECRET_KEY = os.getenv("CLOUDFLARE_SECRET_KEY", "").strip()
 TURNSTILE_ENABLED = os.getenv("TURNSTILE_ENABLED", "false").lower() == "true"
+# Shared secret for the first-party mobile app to bypass Turnstile (the app
+# cannot solve browser CAPTCHAs). Empty = no client may bypass Turnstile.
+MOBILE_APP_SECRET = os.getenv("MOBILE_APP_SECRET", "").strip()
 
 # Maintenance mode: when MAINTENANCE_MODE=true the public site returns
 # 503 + a maintenance page. Admins (with a valid token) can still
@@ -114,10 +118,20 @@ def maintenance_status_payload() -> dict:
 
 
 def _is_mobile_app_request(request: Request) -> bool:
-    """Returns True if the request is from the CipherPoint mobile app.
-    Mobile apps cannot complete browser-based Turnstile challenges."""
-    ua = (request.headers.get("user-agent") or "").lower()
-    return "cipherpoint" in ua or "dart" in ua or "okhttp" in ua
+    """Returns True only for the first-party CipherPoint mobile app.
+
+    A bare user-agent check is not a defense — any script can send a
+    'cipherpoint'/'dart'/'okhttp' UA string and skip the CAPTCHA. The
+    bypass now additionally requires the X-App-Secret header to match
+    MOBILE_APP_SECRET (a value only the real app embeds). If no secret is
+    configured server-side, nothing bypasses Turnstile.
+    """
+    if not MOBILE_APP_SECRET:
+        return False
+    supplied = (request.headers.get("x-app-secret") or "").strip()
+    if not supplied:
+        return False
+    return hmac.compare_digest(supplied.encode("utf-8"), MOBILE_APP_SECRET.encode("utf-8"))
 
 
 def verify_turnstile_token(token: str | None, remote_ip: str | None = None) -> bool:
@@ -140,8 +154,16 @@ def verify_turnstile_token(token: str | None, remote_ip: str | None = None) -> b
         print(f"[TURNSTILE] Verification error: {e}")
         return False
 
-# Initialize FastAPI app
-app = FastAPI(title="CipherPoint API", version="1.0.0")
+# Initialize FastAPI app. Interactive API docs are a map of the entire
+# authenticated surface — don't serve them to the public internet in
+# production (dev keeps /docs, /redoc and /openapi.json).
+app = FastAPI(
+    title="CipherPoint API",
+    version="1.0.0",
+    docs_url=None if IS_PRODUCTION else "/docs",
+    redoc_url=None if IS_PRODUCTION else "/redoc",
+    openapi_url=None if IS_PRODUCTION else "/openapi.json",
+)
 
 
 # ==================== ERROR HANDLERS ====================
@@ -214,6 +236,11 @@ if not _frontend_url:
         _frontend_url = "*"  # dev convenience only
 
 allowed_origins = [_frontend_url] if _frontend_url != "*" else ["*"]
+# Optional extra origins (comma-separated), e.g. a custom domain that also
+# serves the frontend: CORS_ORIGINS="https://cipherpoint.linkpc.net"
+_extra_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+if _extra_origins and "*" not in allowed_origins:
+    allowed_origins += [o for o in _extra_origins if o not in allowed_origins]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -230,14 +257,23 @@ TRUSTED_PROXY_COUNT = int(os.getenv("TRUSTED_PROXY_COUNT", "1"))
 def get_real_ip(request: Request) -> str:
     """Extract the real client IP from proxy headers.
 
-    Cloudflare sends the original client IP in the X-Forwarded-For header.
-    The header format is: X-Forwarded-For: <client>, <proxy1>, <proxy2>
-    We take the left-most IP (the original client).
+    Behind Cloudflare the trustworthy value is CF-Connecting-IP: Cloudflare
+    overwrites it with the actual client IP, so clients cannot spoof it.
+    If it is absent (direct/local access), fall back to X-Forwarded-For but
+    take the RIGHTMOST entry — proxies append the real client to the end of
+    the chain, whereas the leftmost entry is fully client-controlled and
+    would let an attacker rotate their identity to evade rate limits.
     """
+    trusted = request.headers.get("cf-connecting-ip", "").strip()
+    if trusted:
+        return trusted
     forwarded = request.headers.get("x-forwarded-for", "")
     if forwarded:
         ips = [ip.strip() for ip in forwarded.split(",") if ip.strip()]
-        return ips[0] if ips else (request.client.host if request.client else "unknown")
+        if ips:
+            # Walk back from the right past trusted proxy hops.
+            idx = max(0, len(ips) - max(1, TRUSTED_PROXY_COUNT))
+            return ips[idx]
     return request.client.host if request.client else "unknown"
 
 
@@ -247,6 +283,39 @@ async def attach_real_ip(request: Request, call_next):
     request.state.real_ip = get_real_ip(request)
     response = await call_next(request)
     return response
+
+
+# Honeypot enforcement: IPs that trip a honeypot path get throttled across
+# the whole site for a grace period. Honeypot paths are never linked from
+# the frontend, so only blind scanners/bots ever hit them.
+_HONEYPOT_BLOCK_SECONDS = 3600
+_honeypot_hits: dict[str, float] = {}
+_honeypot_lock = threading.Lock()
+
+
+def honeypot_flag_ip(ip: str) -> None:
+    with _honeypot_lock:
+        _honeypot_hits[ip] = time.time()
+        # Bound memory: occasionally drop expired entries.
+        if len(_honeypot_hits) > 10000:
+            cutoff = time.time() - _HONEYPOT_BLOCK_SECONDS
+            for k in [k for k, ts in _honeypot_hits.items() if ts < cutoff]:
+                _honeypot_hits.pop(k, None)
+
+
+@app.middleware("http")
+async def honeypot_guard(request: Request, call_next):
+    ip = get_real_ip(request)
+    now = time.time()
+    with _honeypot_lock:
+        hit_at = _honeypot_hits.get(ip)
+    if hit_at and (now - hit_at) < _HONEYPOT_BLOCK_SECONDS:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Too many requests"},
+            headers={"Retry-After": str(int(_HONEYPOT_BLOCK_SECONDS - (now - hit_at)))},
+        )
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -290,24 +359,36 @@ async def maintenance_gate(request: Request, call_next):
             payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         except jwt.InvalidTokenError:
             payload = None
-        if payload:
+        # Only real access tokens may bypass the gate (refresh tokens have
+        # a 7-day lifetime and must not work here), and revoked tokens must
+        # be rejected just like verify_token would.
+        if payload and payload.get("typ") == "access":
             try:
                 uid = int(payload.get("sub"))
             except (TypeError, ValueError):
                 uid = None
-            if uid:
+            jti = payload.get("jti")
+            if uid and jti:
                 # Quick DB hit to check admin status. We don't use
                 # Depends() here because middleware can't take FastAPI
                 # dependencies directly.
                 try:
                     with SessionLocal() as s:
+                        revoked = s.query(RevokedToken).filter(RevokedToken.jti == jti).first()
+                        if revoked and not revoked.is_expired():
+                            return _maintenance_response(request, path)
                         u = s.query(User).filter(User.id == uid).first()
                         if u and getattr(u, "is_admin", False):
                             return await call_next(request)
                 except Exception as exc:
                     print(f"[maintenance] admin bypass check failed: {exc}")
 
-    # Render a response based on what the client wants
+    return _maintenance_response(request, path)
+
+
+def _maintenance_response(request: Request, path: str):
+    """503 response for blocked traffic: maintenance.html for browsers,
+    structured JSON for API callers."""
     accept = (request.headers.get("accept") or "").lower()
     wants_html = "text/html" in accept or path.endswith(".html")
     if wants_html and request.method == "GET":
@@ -406,6 +487,10 @@ class ChallengeCreateRequest(BaseModel):
     hint_2_cost: int = 20
     tags: Optional[str] = ""
     solution_walkthrough: Optional[str] = None
+    # Admin-created challenges are trusted; default True so the shared
+    # community validator never AttributeErrors (a 500) when the client
+    # omits this field.
+    disclaimer_accepted: bool = True
 
     class Config:
         extra = "allow"
@@ -730,7 +815,11 @@ def startup():
 
 _expiry_scheduler_running = False
 _worker_id = os.getenv("WORKER_ID", "0")
-_is_primary_worker = _worker_id in ("0", "primary", "1")
+# Only the designated primary instance runs background jobs (bot polling,
+# expiry scheduler). WORKER_ID="1" is NOT primary — with the documented
+# single-worker setup the primary is 0, and treating 1 as primary too would
+# double-process Telegram updates if a second worker were ever added.
+_is_primary_worker = _worker_id in ("0", "primary")
 
 
 def purge_expired_community_challenges():
@@ -940,6 +1029,11 @@ def verify_token(authorization: Optional[str] = Header(None), db: Session = Depe
             raise HTTPException(status_code=401, detail="Invalid authorization scheme")
 
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        # Refresh tokens must never authenticate API calls: they live 7
+        # days, so accepting them here would keep a "logged out" session
+        # alive for a week (logout only revokes the presented access jti).
+        if payload.get("typ") != "access":
+            raise HTTPException(status_code=401, detail="Invalid token type")
         user_id = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
@@ -1243,12 +1337,15 @@ def signup(payload: UserSignupRequest, request: Request, db: Session = Depends(g
             rank_points=0,
             is_admin=False,
         )
-        # Store device fingerprint if provided
+        # Store device fingerprint if provided. The raw fingerprint is a
+        # client-controlled, quasi-identifying value — only its SHA-256
+        # digest is persisted (column name says "hash", so honor it).
         if payload.fingerprint:
-            new_user.device_fingerprint_hash = payload.fingerprint[:128]
+            fp_hash = hashlib.sha256(payload.fingerprint.encode("utf-8")).hexdigest()
+            new_user.device_fingerprint_hash = fp_hash
             # Check for duplicate fingerprints (same device, different account)
             duplicate = db.query(User).filter(
-                User.device_fingerprint_hash == payload.fingerprint[:128]
+                User.device_fingerprint_hash == fp_hash
             ).first()
             if duplicate:
                 new_user.flagged_for_review = True
@@ -1265,6 +1362,25 @@ def signup(payload: UserSignupRequest, request: Request, db: Session = Depends(g
         raise
 
     access_token = issue_token(db, new_user.id)
+    # Signup must hand out a refresh token too — otherwise users who create
+    # accounts never get the rotating-session flow the frontend implements.
+    refresh_token = create_access_token(
+        data={"sub": new_user.id},
+        expires_minutes=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60,
+        token_type="refresh",
+    )
+    try:
+        rt_payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_exp": False})
+        db.add(ActiveToken(
+            jti=rt_payload.get("jti"),
+            user_id=new_user.id,
+            expires_at=datetime.utcfromtimestamp(rt_payload.get("exp")),
+            token_type="refresh",
+        ))
+        db.commit()
+    except Exception as exc:
+        print(f"[auth] failed to register refresh token: {exc}")
+        db.rollback()
     return {
         "id": new_user.id,
         "username": new_user.username,
@@ -1273,6 +1389,7 @@ def signup(payload: UserSignupRequest, request: Request, db: Session = Depends(g
         "rank_points": new_user.rank_points,
         "is_admin": bool(new_user.is_admin),
         "access_token": access_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer"
     }
 
@@ -1415,7 +1532,8 @@ def login(payload: UserLoginRequest, request: Request, db: Session = Depends(get
         "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
-        "flagged_for_review": bool(user.flagged_for_review),
+        # flagged_for_review intentionally NOT returned — it would tip off
+        # abusers that our fraud controls noticed them.
     }
 
 OTP_REQUEST_WINDOW_SECONDS = 60
@@ -1662,11 +1780,21 @@ def refresh_token(payload: dict, db: Session = Depends(get_db)):
 
 
 @app.post("/api/auth/logout")
-def logout(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
-    """Revoke the JWT used for this request. Other devices/sessions
-    remain valid (logout is per-token, not per-user). Idempotent:
-    if the token is already revoked, the endpoint still returns 200
-    so the client can clean up its local state without an error."""
+def logout(
+    body: Optional[dict] = None,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Revoke the JWT used for this request plus, optionally, the refresh
+    token supplied in the body. Other devices/sessions remain valid
+    (logout is per-session, not per-user). Idempotent: if a token is
+    already revoked, the endpoint still returns 200 so the client can
+    clean up its local state without an error.
+
+    Body (optional): {"refresh_token": "..."} — clients that hold a
+    refresh token MUST send it here, otherwise it stays valid for 7 days
+    after logout.
+    """
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
     try:
@@ -1697,7 +1825,30 @@ def logout(authorization: Optional[str] = Header(None), db: Session = Depends(ge
     # Also remove from active_tokens if present.
     db.query(ActiveToken).filter(ActiveToken.jti == jti).delete()
     db.commit()
-    return {"message": "Logged out"}
+
+    # Revoke the session's refresh token so it can't be exchanged for a
+    # fresh access token after logout.
+    revoked_refresh = 0
+    refresh_token = (body or {}).get("refresh_token")
+    if refresh_token:
+        try:
+            rt = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+            rt_jti = rt.get("jti")
+            if rt_jti and rt.get("typ") == "refresh" and not db.query(RevokedToken).filter(RevokedToken.jti == rt_jti).first():
+                db.add(RevokedToken(
+                    jti=rt_jti,
+                    user_id=int(user_id) if user_id else None,
+                    revoked_at=datetime.utcnow(),
+                    expires_at=datetime.utcfromtimestamp(rt.get("exp", 0)),
+                    reason="logout",
+                ))
+                db.query(ActiveToken).filter(ActiveToken.jti == rt_jti).delete()
+                db.commit()
+                revoked_refresh = 1
+        except (jwt.InvalidTokenError, TypeError, ValueError):
+            pass  # ignore malformed refresh tokens — access jti already revoked
+
+    return {"message": "Logged out", "refresh_revoked": bool(revoked_refresh)}
 
 
 @app.get("/api/auth/me")
@@ -1771,12 +1922,15 @@ def store_fingerprint(
     fp = (payload.fingerprint or "").strip()
     if not fp or len(fp) > 128:
         return {"message": "Fingerprint skipped"}
-    
-    user.device_fingerprint_hash = fp[:128]
-    
+
+    # Store only the digest (see signup) so raw quasi-identifying input
+    # never lands in the database.
+    fp_hash = hashlib.sha256(fp.encode("utf-8")).hexdigest()
+    user.device_fingerprint_hash = fp_hash
+
     # Check if this fingerprint is already used by another account
     duplicate = db.query(User).filter(
-        User.device_fingerprint_hash == fp[:128],
+        User.device_fingerprint_hash == fp_hash,
         User.id != user_id,
         User.id.isnot(None)
     ).first()
@@ -1857,6 +2011,7 @@ def update_profile(update: ProfileUpdate, user_id: int = Depends(verify_token), 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    ensure_user_not_banned(user_id, db)
 
     if update.username and update.username != user.username:
         ok, reason = is_valid_username(update.username)
@@ -1964,7 +2119,7 @@ class EmergencyResetRequest(BaseModel):
 
 
 @app.post("/api/admin/emergency-reset-password")
-def emergency_reset_password(payload: EmergencyResetRequest, db: Session = Depends(get_db)):
+def emergency_reset_password(payload: EmergencyResetRequest, request: Request, db: Session = Depends(get_db)):
     """Emergency password reset using a master key from env.
 
     Set ADMIN_MASTER_KEY in Render env to enable. This is a recovery hatch
@@ -1974,8 +2129,20 @@ def emergency_reset_password(payload: EmergencyResetRequest, db: Session = Depen
     expected = os.getenv("ADMIN_MASTER_KEY")
     if not expected:
         raise HTTPException(status_code=503, detail="Emergency reset is not configured on this server")
+    # Rate limit per source IP: without this, the master key is an
+    # unauthenticated online-brute-force target.
+    ip = request.state.real_ip
+    allowed, retry = rate_limit_check(f"emergency_reset:{ip}", max_events=5, window_seconds=3600)
+    if not allowed:
+        print(f"[SECURITY] Emergency-reset rate limit hit from {ip}")
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many attempts. Try again in {retry}s.",
+            headers={"Retry-After": str(retry)},
+        )
     if not hmac.compare_digest(payload.master_key, expected):
         # Generic message to avoid leaking whether the key is set
+        print(f"[SECURITY] Failed emergency-reset master key attempt from {ip}")
         raise HTTPException(status_code=403, detail="Invalid master key")
     # Use the same strength policy as the user-facing password change flow
     # so an emergency reset can't be used to lock an account behind a weak password.
@@ -1998,7 +2165,8 @@ def emergency_reset_password(payload: EmergencyResetRequest, db: Session = Depen
     user.password_hash = hash_password(payload.new_password)
     user.reset_token = None
     user.reset_token_expires = None
-    db.commit()
+    # Lock out any session that was open before the reset.
+    revoke_user_tokens(db, user.id, reason="emergency_reset")
     return {"message": f"Password reset for {user.username}", "username": user.username}
 
 
@@ -2246,6 +2414,7 @@ def update_notification_settings(payload: NotificationSettingsRequest, user_id: 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    ensure_user_not_banned(user_id, db)
 
     if payload.notify_new_challenges is not None:
         user.notify_new_challenges = payload.notify_new_challenges
@@ -2272,6 +2441,7 @@ def update_privacy_settings(payload: PrivacySettingsRequest, user_id: int = Depe
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    ensure_user_not_banned(user_id, db)
 
     if payload.hide_email is not None:
         user.hide_email = payload.hide_email
@@ -2292,6 +2462,10 @@ def delete_account(user_id: int = Depends(verify_token), db: Session = Depends(g
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # A banned user must not be able to delete their account: deletion
+    # also removes their ban row, which would let them re-register clean.
+    ensure_user_not_banned(user_id, db)
+
     db.query(SolvedChallenge).filter(SolvedChallenge.user_id == user_id).delete(synchronize_session=False)
     db.query(UnlockedHint).filter(UnlockedHint.user_id == user_id).delete(synchronize_session=False)
     db.query(ChallengeReport).filter(ChallengeReport.reporter_id == user_id).delete(synchronize_session=False)
@@ -2306,9 +2480,11 @@ def delete_account(user_id: int = Depends(verify_token), db: Session = Depends(g
     db.query(ChallengeReport).filter(ChallengeReport.resolved_by == user_id).update(
         {ChallengeReport.resolved_by: None}, synchronize_session=False
     )
-    db.query(UserBan).filter(
-        (UserBan.user_id == user_id) | (UserBan.banned_by == user_id)
-    ).delete(synchronize_session=False)
+    # Only drop the user's own ban record. Bans this user issued against
+    # others (banned_by) are moderation history and must survive deletion.
+    db.query(UserBan).filter(UserBan.user_id == user_id).delete(synchronize_session=False)
+
+    revoke_user_tokens(db, user_id, reason="account_deleted")
 
     db.delete(user)
     db.commit()
@@ -2340,7 +2516,13 @@ def claim_daily_bonus(user_id: int = Depends(verify_token), db: Session = Depend
         elif (now.date() - last_date).days > 1:
             new_streak = 1
 
-    updated = db.query(User).filter(User.id == user_id).update(
+    # The date guard lives in the WHERE clause, so two concurrent claims
+    # resolve atomically: only the first UPDATE matches and pays out.
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    updated = db.query(User).filter(
+        User.id == user_id,
+        (User.daily_bonus_claimed_at.is_(None)) | (User.daily_bonus_claimed_at < today_start),
+    ).update(
         {
             User.coins: func.coalesce(User.coins, 0) + 10,
             User.daily_bonus_claimed_at: now,
@@ -2414,6 +2596,15 @@ def update_telegram_settings(payload: TelegramSettingsRequest, user_id: int = De
         raw_chat_id = (payload.chat_id or "").strip()
         if not raw_chat_id or not raw_chat_id.lstrip("-").isdigit():
             raise HTTPException(status_code=400, detail="Invalid Telegram chat ID format")
+        # Reject chat IDs already bound to another account: OTP login
+        # resolves users by chat_id, so a shared chat_id can route a
+        # login OTP (or delivery) to the wrong account.
+        taken = db.query(User).filter(
+            User.telegram_chat_id == raw_chat_id,
+            User.id != user_id,
+        ).first()
+        if taken:
+            raise HTTPException(status_code=409, detail="This Telegram chat is already linked to another account")
         user.telegram_chat_id = raw_chat_id
 
     db.commit()
@@ -2538,7 +2729,9 @@ def confirm_password_reset(payload: PasswordResetConfirm, request: Request, db: 
     # leave the user locked out.
     user.failed_login_count = 0
     user.locked_until = None
-    db.commit()
+    # Kill every active session: a thief holding a stolen token must not
+    # survive the victim's password reset (same rule as change_password).
+    revoke_user_tokens(db, user.id, reason="password_reset")
 
     if user.telegram_chat_id:
         send_user_notification(
@@ -2983,7 +3176,9 @@ def report_challenge(
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Report failed: {str(e)}")
+        # Log the real cause server-side; never echo raw exception text
+        # (it can contain DB/Turso internals) to the client.
+        raise HTTPException(status_code=500, detail="Could not submit the report. Please try again later.")
 
 
 @app.get("/api/moderation/reports")
@@ -3028,6 +3223,7 @@ def resolve_moderation_report(
 
     challenge = db.query(Challenge).filter(Challenge.id == report.challenge_id).first()
     comment = db.query(Comment).filter(Comment.id == report.comment_id).first() if report.comment_id else None
+    banned_target_id = None
     if action == "reject" and challenge and report.comment_id is None:
         challenge.status = "removed"
     elif action == "ban":
@@ -3040,6 +3236,7 @@ def resolve_moderation_report(
         if not existing_ban:
             ban_reason = payload.reason or report.reason or "Challenge report violation"
             db.add(UserBan(user_id=target_user_id, reason=ban_reason, banned_by=admin_user.id))
+            banned_target_id = target_user_id
             target_user = db.query(User).filter(User.id == target_user_id).first()
             if target_user and target_user.telegram_chat_id:
                 send_user_notification(
@@ -3061,6 +3258,13 @@ def resolve_moderation_report(
 
     db.commit()
     _cache_clear_prefix("challenges:")
+
+    # Kick the banned user out of every active session immediately — same
+    # requirement as admin_ban_user, otherwise their existing tokens stay
+    # valid (up to 7 days for refresh tokens).
+    if banned_target_id:
+        revoke_user_tokens(db, banned_target_id, reason="banned: report resolved")
+
     return {"message": f"Report resolved via {action}", "status": "resolved"}
 
 
@@ -3369,10 +3573,11 @@ def unlock_hint(payload: HintRequest, user_id: int = Depends(verify_token), db: 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if user.coins < hint_cost:
-        raise HTTPException(status_code=400, detail=f"Insufficient coins. Need {hint_cost}, have {user.coins}")
-    user.coins -= hint_cost
-    user.hints_unlocked = (user.hints_unlocked or 0) + 1
+    if (user.coins or 0) < hint_cost:
+        raise HTTPException(status_code=400, detail=f"Insufficient coins. Need {hint_cost}, have {user.coins or 0}")
+    # Claim the hint FIRST: the unique constraint is the serialization
+    # point, so exactly one concurrent request can win the claim. Only the
+    # winner pays, which makes double-charging impossible even under races.
     new_unlocked_hint = UnlockedHint(user_id=user_id, challenge_id=challenge_id, hint_number=hint_number)
     db.add(new_unlocked_hint)
     try:
@@ -3393,6 +3598,30 @@ def unlock_hint(payload: HintRequest, user_id: int = Depends(verify_token), db: 
             "remaining_coins": user.coins,
             "message": "Hint already unlocked"
         }
+    # Winner pays: atomic conditional decrement — can never go negative and
+    # can't lose updates against concurrent coin mutations.
+    charged = db.query(User).filter(
+        User.id == user_id,
+        func.coalesce(User.coins, 0) >= hint_cost,
+    ).update(
+        {
+            User.coins: func.coalesce(User.coins, 0) - hint_cost,
+            User.hints_unlocked: func.coalesce(User.hints_unlocked, 0) + 1,
+        },
+        synchronize_session=False,
+    )
+    db.commit()
+    if not charged:
+        # Lost a concurrent coin spend between the balance check and the
+        # charge — undo the claim so the user isn't left with an unpaid hint.
+        db.query(UnlockedHint).filter(
+            (UnlockedHint.user_id == user_id) &
+            (UnlockedHint.challenge_id == challenge_id) &
+            (UnlockedHint.hint_number == hint_number)
+        ).delete(synchronize_session=False)
+        db.commit()
+        raise HTTPException(status_code=400, detail=f"Insufficient coins. Need {hint_cost}")
+    db.refresh(user)
     return {
         "hint_number": hint_number,
         "hint_text": hint_text,
@@ -3474,8 +3703,6 @@ def submit_flag(
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
-        user.coins = (user.coins or 0) + (challenge.points_reward or 0)
-        user.rank_points = (user.rank_points or 0) + (challenge.points_reward or 0)
 
         now = datetime.utcnow()
         if user.first_solve_at is None:
@@ -3488,6 +3715,10 @@ def submit_flag(
             if solve_seconds < 5:
                 user.flagged_for_review = True
 
+        # Record the solve FIRST: the unique constraint is the serialization
+        # point, so of N concurrent submissions exactly one reaches the award
+        # below. The old order (award → insert → "rollback") could double-pay,
+        # because a failed insert could not undo the already-committed award.
         solved_challenge = SolvedChallenge(user_id=user_id, challenge_id=challenge_id)
         db.add(solved_challenge)
         try:
@@ -3495,6 +3726,17 @@ def submit_flag(
         except IntegrityError:
             db.rollback()
             return {"success": False, "message": "You already solved this challenge!"}
+
+        # Award with an atomic SQL increment — immune to lost updates against
+        # concurrent coin/point mutations.
+        db.query(User).filter(User.id == user_id).update(
+            {
+                User.coins: func.coalesce(User.coins, 0) + (challenge.points_reward or 0),
+                User.rank_points: func.coalesce(User.rank_points, 0) + (challenge.points_reward or 0),
+            },
+            synchronize_session=False,
+        )
+        db.commit()
         db.refresh(user)
         _cache_clear_prefix("challenges:")
         _cache_clear_prefix("leaderboard:")
@@ -3552,9 +3794,36 @@ def get_leaderboard(limit: int = 100, db: Session = Depends(get_db)):
             "badges": badges,
         })
 
+    _cache_set(cache_key, result, ttl=30)
     return result
 
 # ==================== FILE UPLOAD ROUTES ====================
+
+def _sanitize_upload_error(e: Exception) -> str:
+    """Redact Telegram bot tokens from exception text before it reaches a
+    client: requests' HTTPError messages embed the full request URL, which
+    contains /bot<TOKEN>/ for every Telegram API call."""
+    import re as _re
+    return _re.sub(r"/bot\d+:[A-Za-z0-9_-]+", "/bot***", str(e))
+
+
+def _sniff_media_family(head: bytes) -> Optional[str]:
+    """Return 'image' or 'video' based on the file's magic bytes, else None.
+    Used to verify that an upload's payload matches its declared type."""
+    if head[:3] == b"\xff\xd8\xff":
+        return "image"  # JPEG
+    if head[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image"  # PNG
+    if head[:6] in (b"GIF87a", b"GIF89a"):
+        return "image"  # GIF
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "image"  # WEBP
+    if head[:4] == b"\x1a\x45\xdf\xa3":
+        return "video"  # WebM/MKV (EBML)
+    if len(head) >= 12 and head[4:8] == b"ftyp":
+        return "video"  # MP4/MOV family
+    return None
+
 
 @app.post("/api/upload/media")
 async def upload_media(
@@ -3570,6 +3839,16 @@ async def upload_media(
         raise HTTPException(status_code=404, detail="User not found")
 
     ensure_user_not_banned(user_id, db)
+
+    # Per-user throttle: uploads cost Telegram API calls and RAM/disk for
+    # video validation, so don't let one account monopolize the pipeline.
+    up_allowed, up_retry = rate_limit_check(f"upload_user:{user_id}", max_events=30, window_seconds=3600)
+    if not up_allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many uploads this hour. Try again in {up_retry}s.",
+            headers={"Retry-After": str(up_retry)},
+        )
 
     # Block (up to 10s) instead of failing fast, so a brief burst doesn't
     # surface as 503 to the user. If the queue is genuinely saturated for
@@ -3592,18 +3871,38 @@ async def upload_media(
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as tmp_file:
             tmp_path = tmp_file.name
-            contents = await file.read()
-
-            if not contents:
-                os.unlink(tmp_path)
-                raise HTTPException(status_code=400, detail="File is empty")
-
-            if len(contents) > size_limit:
-                os.unlink(tmp_path)
-                raise HTTPException(status_code=413, detail=f"File too large. Max size: {size_limit // (1024*1024)}MB")
-
-            tmp_file.write(contents)
+            # Stream to disk in chunks with a hard cap — never buffer the
+            # whole upload in RAM before checking the size.
+            total = 0
+            head = b""
+            oversized = False
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                if not head:
+                    head = chunk[:16]
+                total += len(chunk)
+                if total > size_limit:
+                    oversized = True
+                    break
+                tmp_file.write(chunk)
             tmp_file.flush()
+
+        if oversized:
+            os.unlink(tmp_path)
+            raise HTTPException(status_code=413, detail=f"File too large. Max size: {size_limit // (1024*1024)}MB")
+        if total == 0:
+            os.unlink(tmp_path)
+            raise HTTPException(status_code=400, detail="File is empty")
+
+        # Content-Type is a client-controlled header — verify the bytes
+        # actually match the declared media family before trusting it.
+        family = _sniff_media_family(head)
+        expected_family = "video" if file.content_type.startswith("video") else "image"
+        if family != expected_family:
+            os.unlink(tmp_path)
+            raise HTTPException(status_code=400, detail="File content does not match its media type")
 
         if file.content_type.startswith("video"):
             validate_media_duration(tmp_path, file.content_type)
@@ -3648,7 +3947,7 @@ async def upload_media(
     except Exception as e:
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
-        raise HTTPException(status_code=503, detail=f"Upload temporarily unavailable: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Upload temporarily unavailable: {_sanitize_upload_error(e)}")
     finally:
         UPLOAD_SEMAPHORE.release()
 
@@ -3658,7 +3957,7 @@ def bots_health(user_id: int = Depends(verify_token)):
     """Public health snapshot of all Telegram bots."""
     return {
         "bots": get_bot_health(),
-        "upload_queue_capacity": int(os.getenv("MAX_CONCURRENT_UPLOADS", "20"))
+        "upload_queue_capacity": int(os.getenv("MAX_CONCURRENT_UPLOADS", "4"))
     }
 
 
@@ -3748,8 +4047,8 @@ for _path in _HONEYPOT_PATHS:
     @app.get(_path, include_in_schema=False)
     async def _honeypot(request: Request, _path=_path):
         ip = request.state.real_ip
-        # Mark as suspicious — slow this IP down for future requests.
-        rate_limit_check(f"honeypot:{ip}", max_events=1, window_seconds=86400)
+        # Flag the IP — honeypot_guard middleware now throttles it site-wide.
+        honeypot_flag_ip(ip)
         return JSONResponse(
             status_code=404,
             content={"detail": "Not Found"},

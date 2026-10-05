@@ -39,6 +39,29 @@ RESERVED_USERNAMES = frozenset({
 _rate_buckets: dict[str, deque] = defaultdict(deque)
 _rate_lock = threading.Lock()
 
+# Housekeeping: bucket keys are created on demand (e.g. one per client IP).
+# Without a sweeper, one-off keys (scanners, spoofed traffic) accumulate
+# forever. Every N calls we drop buckets with no recent events. The idle
+# threshold must exceed the longest window used with rate_limit_check
+# (1 hour today); the 24h honeypot bucket is tracked separately.
+_SWEEP_EVERY_CALLS = 500
+_MAX_BUCKET_IDLE_SECONDS = 2 * 3600
+_sweep_counter = 0
+
+
+def _maybe_sweep(now: float) -> None:
+    """Drop stale rate-limit buckets. Caller must hold _rate_lock."""
+    global _sweep_counter
+    _sweep_counter += 1
+    if _sweep_counter % _SWEEP_EVERY_CALLS != 0:
+        return
+    stale = [
+        key for key, q in _rate_buckets.items()
+        if not q or (now - q[-1]) > _MAX_BUCKET_IDLE_SECONDS
+    ]
+    for key in stale:
+        del _rate_buckets[key]
+
 
 def is_valid_username(username: str) -> Tuple[bool, str]:
     """Returns (ok, reason)."""
@@ -76,6 +99,10 @@ def password_strength_errors(password: str) -> list[str]:
         errors.append("Password must be at least 8 characters")
     if len(password) > 128:
         errors.append("Password must be at most 128 characters")
+    # bcrypt only hashes the first 72 bytes (and bcrypt 5.x *raises* on
+    # longer input instead of truncating), so reject long inputs cleanly.
+    if len(password.encode("utf-8")) > 72:
+        errors.append("Password is too long (maximum 72 bytes)")
     if not re.search(r"[A-Za-z]", password):
         errors.append("Password must contain at least one letter")
     if not re.search(r"\d", password):
@@ -127,6 +154,7 @@ def rate_limit_check(bucket: str, max_events: int, window_seconds: int) -> Tuple
     """
     now = time.time()
     with _rate_lock:
+        _maybe_sweep(now)
         q = _rate_buckets[bucket]
         # Drop old timestamps
         while q and (now - q[0]) > window_seconds:

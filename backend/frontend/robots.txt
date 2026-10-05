@@ -8,7 +8,6 @@ Disallow: /profile.html
 Disallow: /dashboard.html
 Disallow: /community.html
 Disallow: /challenge_detail.html
-Disallow: /leaderboard.html
 Disallow: /notifications.html
 
 # Sitemap location

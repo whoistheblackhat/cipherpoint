@@ -26,18 +26,31 @@ TELEGRAM_ADMIN_CHAT_ID = os.getenv("TELEGRAM_ADMIN_CHAT_ID", "")
 _BOT_INDEX = 0
 _BOT_INDEX_LOCK = threading.Lock()
 
-# Per-bot rate limiting: track last call time
-_BOT_LAST_CALL = {}
+# Per-bot circuit breaker state
 _BOT_LOCKS = defaultdict(threading.Lock)
 _BOT_FAILURE_COUNT = defaultdict(int)
 _BOT_CIRCUIT_OPEN_UNTIL = {}
+
+# Bot tokens appear in request URLs, so requests/HTTPError messages
+# ("400 Client Error ... for url: .../bot<TOKEN>/sendDocument") would leak
+# full credentials into HTTP responses and logs. Redact before use.
+_BOT_TOKEN_RE = None
+
+
+def _sanitize_error(e: Exception) -> str:
+    """Return str(e) with any Telegram bot token redacted."""
+    global _BOT_TOKEN_RE
+    import re as _re
+    if _BOT_TOKEN_RE is None:
+        _BOT_TOKEN_RE = _re.compile(r"/bot\d+:[A-Za-z0-9_-]+")
+    return _BOT_TOKEN_RE.sub("/bot***", str(e))
 
 # Global upload semaphore to prevent thread explosion.
 # On Render free plan uvicorn has 1 worker, but with run_in_executor offload
 # we can still have multiple Telegram uploads in flight concurrently. Keep
 # the semaphore comfortably above the executor pool size so backpressure is
 # driven by real capacity, not by an arbitrary low limit.
-UPLOAD_SEMAPHORE = threading.Semaphore(int(os.getenv("MAX_CONCURRENT_UPLOADS", "30")))
+UPLOAD_SEMAPHORE = threading.Semaphore(int(os.getenv("MAX_CONCURRENT_UPLOADS", "4")))
 UPLOAD_EXECUTOR = ThreadPoolExecutor(
     max_workers=int(os.getenv("MAX_UPLOAD_WORKERS", "12")),
     thread_name_prefix="tgupload"
@@ -93,14 +106,6 @@ def _get_round_robin_bot() -> str:
         return token
 
 
-def _get_bot_token_for_file(file_id: str) -> str:
-    """For downloads - try all bots (file_id is bot-specific in Telegram)."""
-    tokens = _get_bot_tokens()
-    if not tokens:
-        raise ValueError("No Telegram bot tokens configured")
-    return tokens[0]
-
-
 def get_bot_health() -> dict:
     """Public health snapshot for /api/admin/bot-health or /status."""
     out = {}
@@ -143,8 +148,18 @@ def send_user_notification(chat_id: str, text: str):
         response = requests.post(url, json=payload, timeout=10)
         response.raise_for_status()
         return response.json()
+    except requests.HTTPError as e:
+        status = e.response.status_code if e.response is not None else None
+        if status == 401:
+            # A revoked/expired report-bot token silently kills OTP and
+            # password-reset delivery — make that impossible to miss.
+            print("[TELEGRAM] CRITICAL: report-bot token rejected (401). "
+                  "OTP/password-reset/notification delivery is DOWN — fix REPORT_BOT_TOKEN.")
+        else:
+            print(f"[TELEGRAM] Failed to send notification: {_sanitize_error(e)}")
+        return None
     except Exception as e:
-        print(f"[TELEGRAM] Failed to send notification: {e}")
+        print(f"[TELEGRAM] Failed to send notification: {_sanitize_error(e)}")
         return None
 
 
@@ -267,7 +282,13 @@ def _handle_admin_command(update: dict, db_factory):
                 reporter = db.query(User).filter(User.id == report.reporter_id).first()
                 title = challenge.title if challenge else "Unknown"
                 reporter_name = reporter.username if reporter else "unknown"
-                lines.append(f"#{report.id} - {title} (by {reporter_name})\nReason: {report.reason}")
+                # escape: titles/reasons are user content and this message
+                # is sent with parse_mode="HTML" — unescaped input breaks
+                # the reply or injects markup into the admin channel.
+                lines.append(
+                    f"#{report.id} - {escape_html(title)} (by {escape_html(reporter_name)})\n"
+                    f"Reason: {escape_html(report.reason or '')}"
+                )
 
             send_telegram_message(TELEGRAM_ADMIN_CHAT_ID, "\n".join(lines))
 
@@ -490,6 +511,14 @@ def _resolve_report(db: Session, report_id: int, action: str, notify: bool = Tru
         report.resolved_at = datetime.utcnow()
         report.resolved_by = admin.id
         db.commit()
+        # Kick the banned user out of every active session — same rule as
+        # the in-app ban path. Their tokens would otherwise stay valid for
+        # up to 7 days (refresh tokens).
+        try:
+            from main import revoke_user_tokens
+            revoke_user_tokens(db, target_user_id, reason="banned: report resolved via bot")
+        except Exception as revocation_error:
+            print(f"[BAN] Session revocation failed for user {target_user_id}: {revocation_error}")
         message = f"🚫 Report #{report_id} resolved with ban."
 
     try:
@@ -502,6 +531,43 @@ def _resolve_report(db: Session, report_id: int, action: str, notify: bool = Tru
     return message
 
 
+def _load_poll_offsets(db_factory) -> Tuple[int, int]:
+    """Restore persisted Telegram update offsets so a restart does not
+    replay already-processed updates (duplicate admin commands, OTPs)."""
+    try:
+        from models import BotPollState
+        db = db_factory()
+        try:
+            rows = db.query(BotPollState).all()
+            state = {row.key: row.last_update_id for row in rows}
+            return int(state.get("user_bot", 0) or 0), int(state.get("admin_bot", 0) or 0)
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"[POLL] Could not load offsets (starting from 0): {_sanitize_error(e)}")
+        return 0, 0
+
+
+def _save_poll_offset(db_factory, key: str, update_id: int) -> None:
+    try:
+        from models import BotPollState
+        db = db_factory()
+        try:
+            row = db.query(BotPollState).filter(BotPollState.key == key).first()
+            if row:
+                if update_id > row.last_update_id:
+                    row.last_update_id = update_id
+                    db.commit()
+            else:
+                db.add(BotPollState(key=key, last_update_id=update_id))
+                db.commit()
+        finally:
+            db.close()
+    except Exception as e:
+        # Persistence is best-effort; polling must never die over it.
+        print(f"[POLL] Could not persist offset '{key}': {_sanitize_error(e)}")
+
+
 def start_admin_bot_polling(db_factory):
     global _admin_bot_running
     if _admin_bot_running:
@@ -509,8 +575,7 @@ def start_admin_bot_polling(db_factory):
     _admin_bot_running = True
 
     def poll():
-        user_bot_offset = 0
-        admin_bot_offset = 0
+        user_bot_offset, admin_bot_offset = _load_poll_offsets(db_factory)
         while _admin_bot_running:
             try:
                 if TELEGRAM_REPORT_BOT_TOKEN:
@@ -524,11 +589,14 @@ def start_admin_bot_polling(db_factory):
                         )
                         data = response.json()
                         if data.get("ok"):
-                            for update in data.get("result", []):
+                            updates = data.get("result", [])
+                            for update in updates:
                                 user_bot_offset = max(user_bot_offset, update.get("update_id", 0) + 1)
                                 _handle_user_bot_message(update, db_factory)
+                            if updates:
+                                _save_poll_offset(db_factory, "user_bot", user_bot_offset)
                     except Exception as e:
-                        print(f"User bot polling error: {e}")
+                        print(f"User bot polling error: {_sanitize_error(e)}")
 
                 if not TELEGRAM_ADMIN_BOT_TOKEN or not TELEGRAM_ADMIN_CHAT_ID:
                     _time.sleep(5)
@@ -547,19 +615,22 @@ def start_admin_bot_polling(db_factory):
                 data = response.json()
 
                 if data.get("ok"):
-                    for update in data.get("result", []):
+                    updates = data.get("result", [])
+                    for update in updates:
                         admin_bot_offset = max(admin_bot_offset, update.get("update_id", 0) + 1)
                         _handle_admin_command(update, db_factory)
+                    if updates:
+                        _save_poll_offset(db_factory, "admin_bot", admin_bot_offset)
             except requests.exceptions.HTTPError as e:
                 # 409 = another instance is polling. Back off longer.
                 if e.response is not None and e.response.status_code == 409:
                     print(f"Admin bot 409 Conflict: another instance is polling. Backing off 60s.")
                     _time.sleep(60)
                 else:
-                    print(f"Admin bot polling error: {e}")
+                    print(f"Admin bot polling error: {_sanitize_error(e)}")
                     _time.sleep(5)
             except Exception as e:
-                print(f"Admin bot polling error: {e}")
+                print(f"Admin bot polling error: {_sanitize_error(e)}")
                 # Random jitter to avoid thundering herd if multiple instances exist
                 import random
                 _time.sleep(5 + random.uniform(0, 5))
@@ -786,10 +857,10 @@ def get_telegram_file(file_id: str):
                 last_error = e
                 continue
 
-        raise Exception(f"Failed to retrieve file from any bot: {str(last_error)}")
+        raise Exception(f"Failed to retrieve file from any bot: {_sanitize_error(last_error)}")
 
     except Exception as e:
-        raise Exception(f"Error fetching media: {str(e)}")
+        raise Exception(f"Error fetching media: {_sanitize_error(e)}")
 
 
 def validate_media_duration(file_path: str, mime_type: str = "") -> None:
@@ -876,10 +947,13 @@ def upload_to_telegram(file_path: str, chat_id: str = None, bot_token: str = Non
                     response = requests.post(url, files=files, data=payload, timeout=60)
 
                     if response.status_code == 429:
+                        # Rate-limited by Telegram for this bot. Don't sleep
+                        # while holding the per-bot lock (it stalls every other
+                        # upload for this bot), and don't retry with the same
+                        # file handle — its cursor is at EOF, so the retry
+                        # would upload an empty file. Fail over to the next bot.
                         retry_after = int(response.json().get("parameters", {}).get("retry_after", 5))
-                        print(f"[UPLOAD] Rate limited, sleeping {retry_after}s")
-                        _time.sleep(min(retry_after, 30))
-                        response = requests.post(url, files=files, data=payload, timeout=60)
+                        raise Exception(f"Bot rate-limited by Telegram (retry after {retry_after}s)")
 
                     response.raise_for_status()
                     result = response.json()
@@ -896,10 +970,10 @@ def upload_to_telegram(file_path: str, chat_id: str = None, bot_token: str = Non
             except Exception as e:
                 last_error = e
                 _mark_bot_failure(attempt_bot)
-                print(f"[UPLOAD] Bot {attempt_bot[:10]}... failed: {e}")
+                print(f"[UPLOAD] Bot {attempt_bot[:10]}... failed: {_sanitize_error(e)}")
                 continue
 
-    raise Exception(f"All upload bots failed. Last error: {str(last_error)}")
+    raise Exception(f"All upload bots failed. Last error: {_sanitize_error(last_error)}")
 
 
 def upload_media_to_channel(file_path: str, mime_type: str = "application/octet-stream", chat_id: str = None):

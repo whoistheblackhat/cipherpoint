@@ -1,10 +1,19 @@
 """
 Seed script to populate CipherPoint database with sample OSINT challenges
+
+DANGER: this script WIPES all existing users/challenges/bans in whatever
+database the loaded .env points at. It refuses to run against production.
 """
 
 import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
+
+if os.getenv("ENV", "").strip().lower() == "production":
+    raise SystemExit(
+        "REFUSING to seed: ENV=production and this script deletes ALL data. "
+        "Seed scripts must never run against a production database."
+    )
 
 from database import SessionLocal, engine, Base
 from models import User, Challenge, SolvedChallenge, UnlockedHint, ChallengeReport, UserBan
@@ -32,12 +41,17 @@ def seed_database():
     db.query(User).delete()
     db.commit()
     print("🧹 Cleared existing data")
-    
+
+    # Admin credentials come from the environment — never hardcode them.
+    admin_password = os.getenv("ADMIN_PASSWORD", "").strip()
+    if not admin_password or len(admin_password) < 8:
+        raise SystemExit("Set a strong ADMIN_PASSWORD (8+ chars) in .env to seed an admin account.")
+
     # Add sample users
     admin = User(
         username="admin",
         email="admin@cipherpoint.com",
-        password_hash=hash_password("admin123"),
+        password_hash=hash_password(admin_password),
         is_admin=True,
         coins=1000,
         rank_points=5000
@@ -139,7 +153,7 @@ This is a real-world scenario. Use Google, reverse image search, social media pl
     db.close()
     print("\n✨ Database seeding completed successfully!")
     print("\nLogin credentials:")
-    print("  Username: admin | Password: admin123")
+    print("  Username: admin | Password: (from ADMIN_PASSWORD env)")
     print("  Username: john_osint | Password: password123")
     print("  Username: sarah_analyst | Password: password456")
 

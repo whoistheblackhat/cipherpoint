@@ -1,5 +1,55 @@
 (() => {
   const API_BASE = '/api';
+
+  // ==================== SESSION / REFRESH LAYER ====================
+  // Same contract as app.js: single-flight refresh + one replay on 401 so
+  // the admin session survives access-token expiry instead of dying.
+  const RT_KEY = 'refresh_token';
+  let refreshInFlight = null;
+
+  async function refreshAccessToken() {
+    const rt = localStorage.getItem(RT_KEY);
+    if (!rt) return null;
+    if (!refreshInFlight) {
+      refreshInFlight = fetch(API_BASE + '/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: rt }),
+      })
+        .then(async (resp) => {
+          if (!resp.ok) { localStorage.removeItem(RT_KEY); return null; }
+          const data = await resp.json();
+          localStorage.setItem('token', data.access_token);
+          localStorage.setItem(RT_KEY, data.refresh_token);
+          return data.access_token;
+        })
+        .catch(() => null)
+        .finally(() => { refreshInFlight = null; });
+    }
+    return refreshInFlight;
+  }
+
+  const _fetch = window.fetch.bind(window);
+  window.fetch = async function (input, init) {
+    const resp = await _fetch(input, init);
+    try {
+      if (!resp || resp.status !== 401) return resp;
+      const url = typeof input === 'string' ? input : (input && input.url) || '';
+      if (!url.startsWith(API_BASE + '/') || url.includes('/auth/refresh')) return resp;
+      const headers = (init && init.headers) || (typeof input !== 'string' && input.headers) || null;
+      const auth = headers && (typeof headers.get === 'function' ? headers.get('Authorization') : headers.Authorization);
+      if (!auth) return resp;
+      const newToken = await refreshAccessToken();
+      if (!newToken) return resp;
+      const retryInit = { ...(init || {}) };
+      const h = new Headers(headers || undefined);
+      h.set('Authorization', `Bearer ${newToken}`);
+      retryInit.headers = h;
+      return _fetch(input, retryInit);
+    } catch (err) {
+      return resp;
+    }
+  };
   const $ = (id) => document.getElementById(id);
 
   const token = () => localStorage.getItem('token') || '';
@@ -59,6 +109,7 @@
     if (res.status === 401) {
       try {
         localStorage.removeItem('token');
+        localStorage.removeItem('refresh_token');
         localStorage.removeItem('user');
       } catch {}
       window.location.href = 'login.html';
@@ -70,15 +121,10 @@
   }
 
   async function init() {
-    // Diagnostic: log what we see so the user can debug in console.
-    console.log('[admin] init start');
-    console.log('[admin] token length:', token().length);
     const storedUser = user();
-    console.log('[admin] stored user:', storedUser);
 
     // Gate 1: must have a token.
     if (!token()) {
-      console.log('[admin] no token → gate');
       $('adminGate').style.display = 'block';
       $('adminApp').style.display = 'none';
       return;
@@ -87,15 +133,10 @@
     // Gate 2: always verify with the server. localStorage can be stale or
     // populated by an older version of the app that didn't set is_admin.
     let u = storedUser;
-    console.log('[admin] fetching /api/auth/me...');
     const me = await authedFetch('/auth/me');
-    console.log('[admin] /api/auth/me status:', me.status, 'ok:', me.ok);
     if (me.ok) {
       u = Object.assign({}, u || {}, me.data);
       try { localStorage.setItem('user', JSON.stringify(u)); } catch {}
-      console.log('[admin] refreshed user from server:', u);
-    } else {
-      console.log('[admin] /api/auth/me failed, falling back to stored user');
     }
 
     if (!u || !u.is_admin) {
@@ -129,15 +170,18 @@
       const t = token();
       if (t) {
         try {
+          const rt = localStorage.getItem('refresh_token');
           await fetch(API_BASE + '/auth/logout', {
             method: 'POST',
-            headers: { Authorization: `Bearer ${t}` }
+            headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(rt ? { refresh_token: rt } : {}),
           });
         } catch (err) {
           console.warn('admin logout server call failed:', err);
         }
       }
       localStorage.removeItem('token');
+      localStorage.removeItem('refresh_token');
       localStorage.removeItem('user');
       window.location.href = 'login.html';
     });
@@ -557,6 +601,8 @@
       list.appendChild(li);
     });
 
+    if (!list.dataset.unflagBound) {
+    list.dataset.unflagBound = '1';
     list.addEventListener('click', async (e) => {
       const btn = e.target.closest('button[data-action="unflag"]');
       if (!btn) return;
@@ -573,6 +619,7 @@
         showMessage(msg, (res.data && res.data.detail) || 'Unflag failed', 'error');
       }
     });
+    }
   }
 
   // -------- MODERATION --------

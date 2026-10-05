@@ -10,11 +10,18 @@ from turso_client import is_turso_configured, connect_turso
 
 
 def _make_engine():
-    """Build the SQLAlchemy engine against the configured Turso database."""
+    """Build the SQLAlchemy engine against the configured Turso database.
+
+    NullPool gives every checked-out session its own TursoConnection. This
+    matters for two reasons: (1) connections are cheap HTTP wrappers, so
+    there's no resource cost, and (2) each session gets its own server-side
+    interactive transaction (baton) — a shared connection would let
+    concurrent requests interleave statements inside one transaction.
+    """
     if not is_turso_configured():
         raise RuntimeError("TURSO_URL and TURSO_AUTH_TOKEN must be configured")
 
-    from sqlalchemy.pool import StaticPool
+    from sqlalchemy.pool import NullPool
     creator = lambda: connect_turso(
         os.getenv("TURSO_URL", "").strip(),
         os.getenv("TURSO_AUTH_TOKEN", "").strip(),
@@ -22,7 +29,7 @@ def _make_engine():
     return create_engine(
         "sqlite:///:memory:",
         creator=creator,
-        poolclass=StaticPool,
+        poolclass=NullPool,
         connect_args={"check_same_thread": False},
         echo=False
     )
@@ -147,6 +154,21 @@ def init_db():
         conn.execute(text(
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_solved_challenge_user_challenge "
             "ON solved_challenges (user_id, challenge_id)"
+        ))
+
+        # Hot-path indexes (the model-level declarations only materialize on
+        # fresh databases; prod tables need these explicit migrations).
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_challenge_reports_status "
+            "ON challenge_reports (status)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_challenges_status "
+            "ON challenges (status)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_active_tokens_user_expires "
+            "ON active_tokens (user_id, expires_at)"
         ))
 
         user_columns = conn.execute(text("PRAGMA table_info(users)")).fetchall()

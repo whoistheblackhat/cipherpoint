@@ -32,14 +32,29 @@ class TursoConnection:
         self.token = token
         self._closed = False
         self._lock = threading.Lock()
+        # Interactive-transaction handle returned by the Turso HTTP API.
+        # None = no transaction open; every statement otherwise autocommits.
+        self._baton: Optional[str] = None
+        # If the server ever rejects BEGIN or a response is missing its
+        # baton, we degrade to plain autocommit (the previous behavior)
+        # instead of breaking every write.
+        self._txn_ok = True
 
-    def _pipeline(self, requests_body: List[dict]) -> dict:
+    def _pipeline(
+        self,
+        requests_body: List[dict],
+        allow_retry: bool = True,
+        baton: Optional[str] = None,
+    ) -> dict:
         headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json"
         }
-        payload = {"requests": requests_body}
-        for attempt in range(3):
+        payload: dict = {"requests": requests_body}
+        if baton is not None:
+            payload["baton"] = baton
+        attempts = 3 if allow_retry else 1
+        for attempt in range(attempts):
             try:
                 resp = requests.post(
                     f"{self.url}/v2/pipeline",
@@ -48,18 +63,49 @@ class TursoConnection:
                     timeout=15,
                 )
                 if resp.status_code >= 500:
-                    time.sleep(0.5 * (attempt + 1))
-                    continue
+                    if attempt < attempts - 1:
+                        time.sleep(0.5 * (attempt + 1))
+                        continue
+                    raise TursoError(f"Turso API error {resp.status_code}: {resp.text[:500]}")
                 if resp.status_code == 401:
                     raise TursoError("Turso auth failed (401). Check TURSO_AUTH_TOKEN.")
                 if resp.status_code >= 400:
                     raise TursoError(f"Turso API error {resp.status_code}: {resp.text[:500]}")
                 return resp.json()
             except requests.RequestException as e:
-                if attempt == 2:
+                if attempt >= attempts - 1:
                     raise TursoError(f"Turso HTTP failure: {e}")
                 time.sleep(0.5 * (attempt + 1))
         raise TursoError("Turso pipeline failed after retries")
+
+    @staticmethod
+    def _check_step_errors(response: dict) -> None:
+        """Raise if ANY step in a multi-step pipeline returned an error."""
+        results = response.get("results")
+        if not isinstance(results, list):
+            raise TursoError(f"Invalid Turso pipeline response: {response}")
+        for item in results:
+            item = item or {}
+            error = item.get("error")
+            if isinstance(error, dict):
+                message = error.get("message") or error.get("code") or str(error)
+            else:
+                message = str(error) if error else None
+            if message:
+                raise TursoError(f"Turso statement failed: {message}")
+
+    @staticmethod
+    def _raise_statement_error(message: str):
+        """Surface constraint violations as sqlite3.IntegrityError so
+        SQLAlchemy maps them to IntegrityError — the app's
+        `except IntegrityError` handlers (signup, hint unlock, flag submit)
+        depend on that mapping to return friendly 4xx responses instead of
+        unhandled 500s."""
+        lowered = (message or "").lower()
+        if "unique constraint" in lowered or "constraint failed" in lowered:
+            import sqlite3 as _sqlite3
+            raise _sqlite3.IntegrityError(message)
+        raise TursoError(f"Turso statement failed: {message}")
 
     def _convert_value(self, v: Any, decltype: str = None) -> Any:
         if v is None:
@@ -130,13 +176,42 @@ class TursoConnection:
     def cursor(self):
         return TursoCursor(self)
 
+    def _end_transaction(self, step: str) -> None:
+        """Finish the open interactive transaction ('commit' or 'rollback').
+
+        Always clears the baton, even if the network call fails — a stale
+        baton must never be reused. Rollback errors are swallowed because
+        this is often invoked while another exception is propagating.
+        """
+        baton, self._baton = self._baton, None
+        if not baton or not self._txn_ok:
+            return
+        try:
+            with self._lock:
+                response = self._pipeline(
+                    [{"type": step}],
+                    allow_retry=False,
+                    baton=baton,
+                )
+                self._check_step_errors(response)
+        except TursoError as e:
+            if step == "commit":
+                # Commit failures must surface (data may not be durably written).
+                raise
+            print(f"[turso] transaction {step} failed (ignored): {e}")
+
     def commit(self):
-        pass
+        self._end_transaction("commit")
 
     def rollback(self):
-        pass
+        self._end_transaction("rollback")
 
     def close(self):
+        if self._baton:
+            try:
+                self.rollback()
+            except Exception:
+                pass
         self._closed = True
 
     def execute(self, sql: str, params: Optional[Iterable] = None):
@@ -264,8 +339,65 @@ class TursoCursor:
         )
 
         with self.conn._lock:
-            response = self.conn._pipeline([{"type": "execute", "stmt": {"sql": sql_text}}])
-            result = self.conn._extract_result(response)
+            stmt = {"type": "execute", "stmt": {"sql": sql_text}}
+            baton = self.conn._baton
+            started_txn = False
+
+            if baton is not None:
+                # Join the open interactive transaction.
+                response = self.conn._pipeline([stmt], allow_retry=False, baton=baton)
+            elif not is_query and self.conn._txn_ok:
+                # First WRITE with no open transaction: open one and run the
+                # statement inside it in a single request. The returned baton
+                # keeps the transaction alive across subsequent statements
+                # until commit()/rollback() finalizes it.
+                response = self.conn._pipeline([{"type": "begin"}, stmt], allow_retry=False)
+                results = response.get("results") or []
+                if results and (results[0] or {}).get("error"):
+                    # Server rejected BEGIN — interactive transactions are
+                    # unavailable. Degrade to autocommit (previous behavior)
+                    # instead of failing every write.
+                    self.conn._txn_ok = False
+                    print("[turso] interactive transactions unavailable "
+                          f"({(results[0].get('error') or {}).get('message')}); "
+                          "falling back to autocommit mode")
+                    response = self.conn._pipeline([stmt], allow_retry=False)
+                elif not response.get("baton"):
+                    # BEGIN succeeded but no baton came back: the open
+                    # transaction can never be committed, so its effects
+                    # would be lost. Re-run the statement in autocommit and
+                    # disable transactions for this connection.
+                    self.conn._txn_ok = False
+                    print("[turso] CRITICAL: BEGIN succeeded but no baton returned; "
+                          "re-running statement in autocommit mode")
+                    response = self.conn._pipeline([stmt], allow_retry=False)
+                else:
+                    started_txn = True
+            else:
+                # Read (or autocommit mode): single statement, no baton.
+                # Retrying a write could execute it twice (the first attempt
+                # may have committed server-side before the client saw the
+                # response), so only read-only statements are retryable.
+                response = self.conn._pipeline([stmt], allow_retry=is_query)
+
+            if started_txn or baton is not None:
+                new_baton = response.get("baton")
+                if new_baton:
+                    self.conn._baton = new_baton
+
+            self.conn._check_step_errors(response)
+            results = response.get("results") or []
+            if not results:
+                raise TursoError(f"Invalid Turso pipeline response: {response}")
+            # For [begin, execute] pipelines the execute step is last; take
+            # it and validate the inner response type (real Turso answers
+            # with {"type": "execute", "result": ...} inside the step).
+            item = results[-1] or {}
+            result = item.get("response")
+            if not isinstance(result, dict) or result.get("type") not in ("execute",):
+                error = item.get("error") or response.get("error")
+                message = error.get("message") if isinstance(error, dict) else str(error or item)
+                self._raise_statement_error(message)
             body = result.get("result", {}) or {}
 
             if is_query:
@@ -292,10 +424,8 @@ class TursoCursor:
 
     def executemany(self, sql: str, seq_of_params: Iterable[Iterable]):
         params_list = list(seq_of_params)
-        with self.conn._lock:
-            for params in params_list:
-                sql_text, _ = self._bind(sql, params)
-                self.conn._pipeline([{"type": "execute", "stmt": {"sql": sql_text}}])
+        for params in params_list:
+            self.execute(sql, params)
         self._affected = len(params_list)
         return self
 

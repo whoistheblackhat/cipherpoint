@@ -1,28 +1,18 @@
 # ============================================
-# CipherPoint Backend — Production Dependencies
+# CipherPoint — dependency pins (kept in sync with backend/requirements.txt)
+#
+# NOTE: the deployed service installs backend/requirements.txt (Render
+# rootDir: backend). This root copy exists only for convenience — it used
+# to hold an old, vulnerable pin set (fastapi 0.95 / starlette 0.26 /
+# gunicorn 21.2). Do NOT let it drift from backend/requirements.txt.
 # ============================================
-# Install:  pip install -r requirements.txt
-# Tested with Python 3.11
-# ============================================
 
-# --- Web framework ---
-fastapi==0.95.0
-uvicorn[standard]==0.21.0
-gunicorn==21.2.0
-starlette==0.26.1
-anyio==3.7.1   # Pinned: anyio 4.x breaks starlette 0.26 (to_thread API removed)
-
-# --- Database / ORM ---
-SQLAlchemy==2.0.52
-# psycopg2-binary==2.9.9   # Uncomment only if using Postgres (not needed for Turso)
-
-# --- Config / Secrets ---
+fastapi==0.135.3
+uvicorn[standard]==0.38.0
+gunicorn==23.0.0
+SQLAlchemy==2.0.48
 python-dotenv==1.0.0
 PyJWT==2.13.0
-bcrypt==4.0.1
-
-# --- HTTP client (Turso libSQL + Telegram Bot API) ---
-requests==2.31.0
-
-# --- Form / file uploads (for FastAPI UploadFile / File) ---
+bcrypt==5.0.0
+requests==2.32.5
 python-multipart==0.0.32

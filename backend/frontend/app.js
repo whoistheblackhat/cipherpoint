@@ -1,5 +1,71 @@
 const API_BASE_URL = '/api';
 
+// ==================== SESSION / REFRESH LAYER ====================
+// The backend issues a short-lived access token (15 min) plus a 7-day
+// refresh token with rotation. On any authenticated /api 401 we run a
+// single-flight refresh and replay the original request once, so sessions
+// survive token expiry instead of silently logging the user out.
+(() => {
+  const RT_KEY = 'refresh_token';
+  let refreshInFlight = null;
+
+  window._storeSession = function (data) {
+    if (!data || !data.access_token) return;
+    localStorage.setItem('token', data.access_token);
+    if (data.refresh_token) localStorage.setItem(RT_KEY, data.refresh_token);
+    // Keep long-lived credentials out of the cached profile blob —
+    // anything in localStorage is readable by any XSS.
+    const cached = { ...data };
+    delete cached.access_token;
+    delete cached.refresh_token;
+    localStorage.setItem('user', JSON.stringify(cached));
+  };
+
+  window._refreshAccessToken = async function () {
+    const rt = localStorage.getItem(RT_KEY);
+    if (!rt) return null;
+    if (!refreshInFlight) {
+      refreshInFlight = fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: rt }),
+      })
+        .then(async (resp) => {
+          if (!resp.ok) { localStorage.removeItem(RT_KEY); return null; }
+          const data = await resp.json();
+          localStorage.setItem('token', data.access_token);
+          localStorage.setItem(RT_KEY, data.refresh_token);
+          return data.access_token;
+        })
+        .catch(() => null)
+        .finally(() => { refreshInFlight = null; });
+    }
+    return refreshInFlight;
+  };
+
+  const _fetch = window.fetch.bind(window);
+  window.fetch = async function (input, init) {
+    const resp = await _fetch(input, init);
+    try {
+      if (!resp || resp.status !== 401) return resp;
+      const url = typeof input === 'string' ? input : (input && input.url) || '';
+      if (!url.startsWith(API_BASE_URL + '/') || url.includes('/auth/refresh')) return resp;
+      const headers = (init && init.headers) || (typeof input !== 'string' && input.headers) || null;
+      const auth = headers && (typeof headers.get === 'function' ? headers.get('Authorization') : headers.Authorization);
+      if (!auth) return resp; // unauthenticated call (login/signup) — nothing to refresh
+      const newToken = await window._refreshAccessToken();
+      if (!newToken) return resp;
+      const retryInit = { ...(init || {}) };
+      const h = new Headers(headers || undefined);
+      h.set('Authorization', `Bearer ${newToken}`);
+      retryInit.headers = h;
+      return _fetch(input, retryInit);
+    } catch (err) {
+      return resp;
+    }
+  };
+})();
+
 // Device fingerprinting — lightweight, privacy-preserving browser fingerprint
 // Used to detect same-device multi-account creation and suspicious activity.
 const DEVICE_FINGERPRINT = (() => {
@@ -1050,6 +1116,7 @@ async function loadUser() {
       const message = errorData.detail || 'Your account has been suspended.';
       currentUser = null;
       localStorage.removeItem('token');
+      localStorage.removeItem('refresh_token');
       localStorage.removeItem('user');
       sessionStorage.setItem('cipherpoint_auth_error', message);
       showToast(`🚫 ${message}`, 'error');
@@ -1061,6 +1128,7 @@ async function loadUser() {
   } catch (error) {
     currentUser = null;
     localStorage.removeItem('token');
+    localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');
     setUserDisplayState();
     return null;
@@ -1075,9 +1143,11 @@ async function logout() {
   // already a "you are now signed out" operation.
   if (token) {
     try {
+      const refreshToken = localStorage.getItem('refresh_token');
       await fetch(`${API_BASE_URL}/auth/logout`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(refreshToken ? { refresh_token: refreshToken } : {}),
       });
     } catch (err) {
       console.warn('Server logout failed (continuing anyway):', err);
@@ -1085,6 +1155,7 @@ async function logout() {
   }
   currentUser = null;
   localStorage.removeItem('token');
+  localStorage.removeItem('refresh_token');
   localStorage.removeItem('user');
   setUserDisplayState();
   showToast('✅ Logged out successfully', 'success');
@@ -1139,8 +1210,7 @@ async function handleLogin(event) {
     }
 
     currentUser = data;
-    localStorage.setItem('token', data.access_token);
-    localStorage.setItem('user', JSON.stringify(data));
+    _storeSession(data);
     setUserDisplayState();
 
     if (messageBox) {
@@ -1279,8 +1349,7 @@ async function handleOtpVerifySubmit(event) {
     }
 
     currentUser = data;
-    localStorage.setItem('token', data.access_token);
-    localStorage.setItem('user', JSON.stringify(data));
+    _storeSession(data);
     setUserDisplayState();
 
     if (verifyMessageEl) {
@@ -1376,8 +1445,7 @@ async function handleSignup(event) {
     }
 
     currentUser = data;
-    localStorage.setItem('token', data.access_token);
-    localStorage.setItem('user', JSON.stringify(data));
+    _storeSession(data);
     setUserDisplayState();
 
     if (messageBox) {
@@ -2412,6 +2480,7 @@ async function deleteAccount() {
     }
 
     localStorage.removeItem('token');
+    localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');
     currentUser = null;
 
@@ -2428,7 +2497,10 @@ async function deleteAccount() {
 function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text || '';
-  return div.innerHTML;
+  // div.innerHTML escapes & < > but NOT quotes, and this output is
+  // interpolated into double-quoted attributes (value="${...}") in several
+  // modals — escape quotes too or attribute injection stays open.
+  return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function shareChallenge(challengeId) {
@@ -3480,13 +3552,7 @@ function renderRedditComment(comment, challengeId, depth) {
   return `
     <div class="reddit-comment ${isCollapsed}" data-comment-id="${comment.id}">
       <div class="vote-column">
-        <button class="vote-btn" type="button" onclick="voteComment(this, 1)" title="Upvote" aria-label="Upvote">
-          <i class="fa-solid fa-arrow-up"></i>
-        </button>
         <div class="vote-count">${voteCount}</div>
-        <button class="vote-btn" type="button" onclick="voteComment(this, -1)" title="Downvote" aria-label="Downvote">
-          <i class="fa-solid fa-arrow-down"></i>
-        </button>
       </div>
       <div class="comment-body-wrap">
         <div class="comment-meta">
@@ -3638,25 +3704,6 @@ async function submitReply(event) {
     console.error('Error posting reply:', error);
     if (messageEl) { messageEl.className = 'form-message show error'; messageEl.textContent = 'Unable to post reply'; }
   }
-}
-
-function voteComment(button, direction) {
-  const comment = button?.closest('.reddit-comment');
-  const count = comment?.querySelector('.vote-count');
-  if (!comment || !count) return;
-
-  const activeClass = direction > 0 ? 'upvoted' : 'downvoted';
-  const oppositeClass = direction > 0 ? 'downvoted' : 'upvoted';
-  const wasActive = button.classList.contains(activeClass);
-  const oppositeButton = comment.querySelector(`.vote-btn.${oppositeClass}`);
-  const switchedVote = !wasActive && Boolean(oppositeButton);
-  comment.querySelectorAll('.vote-btn').forEach((item) => item.classList.remove('upvoted', 'downvoted'));
-  const currentScore = Number(count.textContent) || 0;
-  const nextScore = wasActive
-    ? currentScore - direction
-    : currentScore + direction * (switchedVote ? 2 : 1);
-  button.classList.toggle(activeClass, !wasActive);
-  count.textContent = nextScore;
 }
 
 function shareComment(commentId) {

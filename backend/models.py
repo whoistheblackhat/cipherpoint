@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime, Float, Boolean, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Text, DateTime, Float, Boolean, ForeignKey, UniqueConstraint, Index
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -81,7 +81,7 @@ class Challenge(Base):
     # by default; admins / community authors can add a full step-by-step.
     solution_walkthrough = Column(Text, nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
-    status = Column(String, default="approved", nullable=False)
+    status = Column(String, default="approved", nullable=False, index=True)
     is_community = Column(Boolean, default=False, nullable=False)
     disclaimer_accepted = Column(Boolean, default=False, nullable=False)
     tags = Column(String, default="", nullable=True)
@@ -121,7 +121,12 @@ class UnlockedHint(Base):
     challenge_id = Column(Integer, ForeignKey("challenges.id"), nullable=False)
     hint_number = Column(Integer, nullable=False)  # 1 or 2
     unlocked_at = Column(DateTime, default=datetime.utcnow)
-    
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "challenge_id", "hint_number",
+                         name="uq_unlocked_hints_user_challenge_number"),
+    )
+
     # Relationships
     user = relationship("User", back_populates="unlocked_hints")
     challenge = relationship("Challenge", back_populates="unlocked_hints")
@@ -137,7 +142,7 @@ class ChallengeReport(Base):
     reporter_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     reason = Column(String, nullable=False)
     details = Column(Text, default="")
-    status = Column(String, default="open", nullable=False)
+    status = Column(String, default="open", nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     resolved_at = Column(DateTime, nullable=True)
     resolved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -220,6 +225,10 @@ class ActiveToken(Base):
     # endpoint rejects anything that isn't typ=refresh.
     token_type = Column(String, default="access", nullable=False)
 
+    __table_args__ = (
+        Index("ix_active_tokens_user_expires", "user_id", "expires_at"),
+    )
+
 
 class IntelArticle(Base):
     __tablename__ = "intel_articles"
@@ -236,3 +245,13 @@ class IntelArticle(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     author = relationship("User")
+
+
+class BotPollState(Base):
+    """Persists Telegram long-polling offsets across restarts so already-
+    processed updates (including admin commands) are not replayed."""
+    __tablename__ = "bot_poll_state"
+
+    key = Column(String, primary_key=True)  # 'user_bot' | 'admin_bot'
+    last_update_id = Column(Integer, default=0, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

@@ -188,8 +188,11 @@ class TursoConnection:
             return
         try:
             with self._lock:
+                # Transactions are baton-bound sessions; finalize them with
+                # plain SQL (the pipeline has no begin/commit step variants
+                # on the current Turso Cloud API).
                 response = self._pipeline(
-                    [{"type": step}],
+                    [{"type": "execute", "stmt": {"sql": "COMMIT" if step == "commit" else "ROLLBACK"}}],
                     allow_retry=False,
                     baton=baton,
                 )
@@ -347,32 +350,46 @@ class TursoCursor:
                 # Join the open interactive transaction.
                 response = self.conn._pipeline([stmt], allow_retry=False, baton=baton)
             elif not is_query and self.conn._txn_ok:
-                # First WRITE with no open transaction: open one and run the
-                # statement inside it in a single request. The returned baton
-                # keeps the transaction alive across subsequent statements
-                # until commit()/rollback() finalizes it.
-                response = self.conn._pipeline([{"type": "begin"}, stmt], allow_retry=False)
-                results = response.get("results") or []
-                if results and (results[0] or {}).get("error"):
-                    # Server rejected BEGIN — interactive transactions are
-                    # unavailable. Degrade to autocommit (previous behavior)
-                    # instead of failing every write.
+                # First WRITE with no open transaction. On the Turso HTTP
+                # API a transaction is a baton-bound session: send BEGIN as
+                # a plain SQL statement plus the real statement in one
+                # request; the returned baton keeps that session (and its
+                # open transaction) alive for subsequent statements until
+                # COMMIT/ROLLBACK finalizes it.
+                try:
+                    response = self.conn._pipeline([
+                        {"type": "execute", "stmt": {"sql": "BEGIN"}},
+                        stmt,
+                    ], allow_retry=False)
+                except TursoError:
+                    # Server rejected the protocol outright (e.g. HTTP 400 on
+                    # the request). Degrade to autocommit — the previous,
+                    # proven behavior — instead of failing every write.
                     self.conn._txn_ok = False
-                    print("[turso] interactive transactions unavailable "
-                          f"({(results[0].get('error') or {}).get('message')}); "
-                          "falling back to autocommit mode")
-                    response = self.conn._pipeline([stmt], allow_retry=False)
-                elif not response.get("baton"):
-                    # BEGIN succeeded but no baton came back: the open
-                    # transaction can never be committed, so its effects
-                    # would be lost. Re-run the statement in autocommit and
-                    # disable transactions for this connection.
-                    self.conn._txn_ok = False
-                    print("[turso] CRITICAL: BEGIN succeeded but no baton returned; "
-                          "re-running statement in autocommit mode")
+                    print("[turso] BEGIN rejected by server; falling back to autocommit mode")
                     response = self.conn._pipeline([stmt], allow_retry=False)
                 else:
-                    started_txn = True
+                    results = response.get("results") or []
+                    begin_item = (results[0] if results else {}) or {}
+                    if begin_item.get("error"):
+                        # BEGIN failed server-side (e.g. explicit transactions
+                        # unsupported) — same degradation path.
+                        self.conn._txn_ok = False
+                        print("[turso] BEGIN failed on server "
+                              f"({(begin_item.get('error') or {}).get('message')}); "
+                              "falling back to autocommit mode")
+                        response = self.conn._pipeline([stmt], allow_retry=False)
+                    elif not response.get("baton"):
+                        # BEGIN succeeded but no baton came back: the open
+                        # transaction can never be committed, so its effects
+                        # would be lost. Re-run the statement in autocommit
+                        # and disable transactions for this connection.
+                        self.conn._txn_ok = False
+                        print("[turso] CRITICAL: BEGIN succeeded but no baton returned; "
+                              "re-running statement in autocommit mode")
+                        response = self.conn._pipeline([stmt], allow_retry=False)
+                    else:
+                        started_txn = True
             else:
                 # Read (or autocommit mode): single statement, no baton.
                 # Retrying a write could execute it twice (the first attempt

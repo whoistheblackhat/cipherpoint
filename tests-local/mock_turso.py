@@ -121,6 +121,16 @@ class Handler(BaseHTTPRequestHandler):
             baton_out = baton
         else:
             conn = _autocommit_conn
+            # Turso Cloud semantics: a fresh request whose first statement
+            # is plain SQL "BEGIN" opens a new baton-bound session.
+            for step in steps:
+                if step.get("type") == "execute":
+                    sql = ((step.get("stmt") or {}).get("sql") or "").strip().upper()
+                    if sql == "BEGIN":
+                        baton_out = str(uuid.uuid4())
+                        conn = _base_conn()
+                        _batons[baton_out] = conn
+                        break
 
         results = []
         for step in steps:

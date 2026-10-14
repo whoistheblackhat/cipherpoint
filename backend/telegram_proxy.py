@@ -568,6 +568,31 @@ def _save_poll_offset(db_factory, key: str, update_id: int) -> None:
         print(f"[POLL] Could not persist offset '{key}': {_sanitize_error(e)}")
 
 
+def _log_polling_failure(kind: str, err: Exception) -> None:
+    """Log a polling failure, throttling transient DNS blips.
+
+    Render containers intermittently fail DNS resolution for a few seconds
+    at a time. The loop self-heals on its next iteration, so logging every
+    5s attempt is pure noise — log the first failure of a streak, then
+    every 12th consecutive one, plus a recovery line when it clears.
+    """
+    msg = _sanitize_error(err)
+    key = f"_poll_fail_streak_{kind}"
+    if "NameResolutionError" in msg or "name resolution" in msg.lower():
+        streak = _POLL_FAILURE_STATE.get(key, 0) + 1
+        _POLL_FAILURE_STATE[key] = streak
+        if streak == 1:
+            print(f"[{kind}-bot] Telegram unreachable (DNS blip) — retrying in the next cycle")
+        elif streak % 12 == 0:
+            print(f"[{kind}-bot] Telegram still unreachable after {streak} attempts (DNS): {msg[:140]}")
+        return
+    _POLL_FAILURE_STATE[key] = 0
+    print(f"{kind} bot polling error: {msg}")
+
+
+_POLL_FAILURE_STATE: dict = {}
+
+
 def start_admin_bot_polling(db_factory):
     global _admin_bot_running
     if _admin_bot_running:
@@ -589,6 +614,7 @@ def start_admin_bot_polling(db_factory):
                         )
                         data = response.json()
                         if data.get("ok"):
+                            _POLL_FAILURE_STATE["_poll_fail_streak_user"] = 0
                             updates = data.get("result", [])
                             for update in updates:
                                 user_bot_offset = max(user_bot_offset, update.get("update_id", 0) + 1)
@@ -596,7 +622,7 @@ def start_admin_bot_polling(db_factory):
                             if updates:
                                 _save_poll_offset(db_factory, "user_bot", user_bot_offset)
                     except Exception as e:
-                        print(f"User bot polling error: {_sanitize_error(e)}")
+                        _log_polling_failure("user", e)
 
                 if not TELEGRAM_ADMIN_BOT_TOKEN or not TELEGRAM_ADMIN_CHAT_ID:
                     _time.sleep(5)
@@ -615,6 +641,7 @@ def start_admin_bot_polling(db_factory):
                 data = response.json()
 
                 if data.get("ok"):
+                    _POLL_FAILURE_STATE["_poll_fail_streak_admin"] = 0
                     updates = data.get("result", [])
                     for update in updates:
                         admin_bot_offset = max(admin_bot_offset, update.get("update_id", 0) + 1)
@@ -627,10 +654,10 @@ def start_admin_bot_polling(db_factory):
                     print(f"Admin bot 409 Conflict: another instance is polling. Backing off 60s.")
                     _time.sleep(60)
                 else:
-                    print(f"Admin bot polling error: {_sanitize_error(e)}")
+                    _log_polling_failure("admin", e)
                     _time.sleep(5)
             except Exception as e:
-                print(f"Admin bot polling error: {_sanitize_error(e)}")
+                _log_polling_failure("admin", e)
                 # Random jitter to avoid thundering herd if multiple instances exist
                 import random
                 _time.sleep(5 + random.uniform(0, 5))

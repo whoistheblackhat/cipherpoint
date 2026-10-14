@@ -12,3 +12,4 @@ Disallow: /notifications.html
 
 # Sitemap location
 Sitemap: https://cipherpoint.linkpc.net/sitemap.xml
+Sitemap: https://cipherpoint.linkpc.net/sitemap.txt

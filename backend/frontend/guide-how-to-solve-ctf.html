@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" href="favicon.ico">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How to Solve CTF Challenges: A Working Methodology | CipherPoint</title>
+    <meta name="description" content="A practical method for solving CTF challenges: read the brief properly, inventory what you have, cheap checks first, and what to do when you're stuck. Written for OSINT and forensics CTFs.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://cipherpoint.linkpc.net/guide-how-to-solve-ctf.html">
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="How to Solve CTF Challenges: A Working Methodology">
+    <meta property="og:description" content="The repeatable approach experienced players use: inventory, cheap checks first, pivot, and what to do when stuck.">
+    <meta property="og:url" content="https://cipherpoint.linkpc.net/guide-how-to-solve-ctf.html">
+    <meta property="og:image" content="https://cipherpoint.linkpc.net/og-image.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .guide-page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+        .guide-hero { margin-bottom: 2.5rem; }
+        .guide-hero .crumb { font-size: .9rem; margin-bottom: 1rem; }
+        .guide-hero .crumb a { color: #58a6ff; text-decoration: none; }
+        .guide-hero h1 { font-size: 2.3rem; font-weight: 800; line-height: 1.2; color: #e6edf3; margin-bottom: .8rem; }
+        .guide-hero .lede { color: #8b949e; font-size: 1.12rem; line-height: 1.6; }
+        .guide-meta { color: #6e7681; font-size: .85rem; margin-top: 1rem; }
+        .guide-section { background: #161b22; border: 1px solid #30363d; border-radius: 16px; padding: 2rem 2.2rem; margin-bottom: 1.5rem; }
+        .guide-section h2 { color: #e6edf3; font-size: 1.35rem; font-weight: 700; margin-bottom: 1rem; }
+        .guide-section h3 { color: #c9d1d9; font-size: 1.05rem; font-weight: 600; margin: 1.4rem 0 .6rem; }
+        .guide-section p { color: #c9d1d9; line-height: 1.75; margin-bottom: .9rem; }
+        .guide-section ul, .guide-section ol { color: #c9d1d9; line-height: 1.8; padding-left: 1.4rem; margin-bottom: 1rem; }
+        .guide-section li { margin-bottom: .35rem; }
+        .guide-section code { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 2px 8px; color: #79c0ff; font-size: .92em; }
+        .guide-note { border-left: 3px solid #58a6ff; background: #0d1117; padding: .9rem 1.2rem; border-radius: 0 10px 10px 0; margin: 1.2rem 0; color: #c9d1d9; line-height: 1.7; }
+        .related { display: grid; gap: .8rem; }
+        .related a { display: block; background: #0d1117; border: 1px solid #30363d; border-radius: 10px; padding: .9rem 1.2rem; color: #58a6ff; text-decoration: none; }
+        .related a:hover { border-color: #58a6ff; }
+        .cta-box { text-align: center; background: linear-gradient(135deg, #161b22, #1c2333); border: 1px solid #30363d; border-radius: 16px; padding: 2rem; }
+        .cta-box .btn { display: inline-block; margin-top: 1rem; background: #238636; color: #fff; padding: .7rem 1.6rem; border-radius: 10px; text-decoration: none; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <nav class="topbar container">
+        <div class="brand-wrap">
+            <a href="index.html" style="text-decoration:none;color:inherit;display:flex;align-items:center;gap:10px;">
+                <div class="brand-mark-icon"><i class="fa-solid fa-user-secret"></i></div>
+                <div class="brand-text">CipherPoint</div>
+            </a>
+        </div>
+        <div>
+            <a href="index.html">Home</a>
+            <a href="guides.html">Guides</a>
+            <a href="contact.html">Contact</a>
+            <a href="login.html">Sign In</a>
+            <a href="signup.html">Sign Up</a>
+        </div>
+    </nav>
+
+    <main class="guide-page">
+        <div class="guide-hero">
+            <div class="crumb"><a href="guides.html">← All Guides</a></div>
+            <h1>How to solve CTF challenges without flailing</h1>
+            <p class="lede">Every new player makes the same mistake: they see a file, they start clicking tools at random, and twenty minutes later they have five terminal windows and no progress. Solving challenges is a repeatable process. This is the one that works.</p>
+            <div class="guide-meta"><i class="fa-solid fa-clock"></i> 8 min read · CTF · Updated October 2026</div>
+        </div>
+
+        <div class="guide-section">
+            <h2>Know what you're playing</h2>
+            <p>Most CTF sites (CipherPoint included) run <strong>jeopardy style</strong>: a list of independent challenges across categories, each worth points, each hiding a flag or an answer. You solve them in any order. The other format, attack-defense, where you defend a live server while attacking someone else's, is a different sport entirely, so don't mix up the advice.</p>
+            <p>Categories you'll run into on OSINT-focused platforms:</p>
+            <ul>
+                <li><strong>OSINT</strong> — the answer exists somewhere public. Your job is to find it and interpret it correctly.</li>
+                <li><strong>Digital forensics</strong> — you get a file (image, video, document, disk) and extract what's hidden in or about it.</li>
+                <li><strong>Cryptography</strong> — encoded or encrypted text, usually with a hint about the scheme.</li>
+                <li><strong>Web / recon</strong> — an endpoint, a domain, or a breadcrumb trail to follow.</li>
+            </ul>
+        </div>
+
+        <div class="guide-section">
+            <h2>The method: five steps, in order</h2>
+            <h3>1. Read the description twice</h3>
+            <p>Not once. Twice. Challenge authors bury hints in plain sight: a city name, a date written oddly, the phrase "she always signs her work". Half of the "impossible" challenges fall over because someone finally reread the brief. Note the exact flag format they ask for, down to case and brackets.</p>
+            <h3>2. Inventory what you actually have</h3>
+            <p>Before touching a single tool, list it: one JPEG? A URL? A username? A paragraph of text? Each type of artifact points to a different first move, and knowing what you <em>don't</em> have saves you from dead ends.</p>
+            <h3>3. Run the cheap checks first</h3>
+            <p>These take seconds and solve a surprising number of challenges:</p>
+            <pre><code>file evidence.img          # is it really a JPEG?
+exiftool evidence.img      # metadata, GPS, timestamps
+strings evidence.img | head -50
+binwalk evidence.img       # embedded files</code></pre>
+            <p>For text-based challenges: is it base64? (ends with <code>=</code>, alphanumeric). Hex? ROT13? Caesars are free to try. For OSINT challenges: extract every proper noun, place, and date from the description, then search each one. One of them is usually the thread to pull.</p>
+            <h3>4. Pivot, don't wander</h3>
+            <p>Every finding should lead to the next action: a GPS coordinate goes into a map, a username goes into a search across platforms, a timestamp goes against the story the challenge is telling. If your last three actions didn't connect to each other, stop and re-read the description. You drifted.</p>
+            <h3>5. Get unstuck deliberately</h3>
+            <p>Everyone gets stuck. The difference is what you do about it: change tools (what one tool hides, another shows), change angle (metadata has nothing? look at the image content itself), or take a real break. And if the platform offers hints, use them. On CipherPoint hints cost coins, which feels expensive until you compare it to three hours of staring. Buying hint one after 30 minutes is not a defeat, it's economics.</p>
+        </div>
+
+        <div class="guide-section">
+            <h2>Flag submission hygiene</h2>
+            <ul>
+                <li>Submit exactly what was asked: <code>flag{...}</code> is not the same as <code>FLAG{...}</code> or the content without the wrapper.</li>
+                <li>Trim whitespace. Copy-paste from PDFs loves to add invisible characters.</li>
+                <li>Don't brute-force guesses against the submit box. Most platforms rate-limit it, and a lockout costs you more time than thinking would have.</li>
+            </ul>
+        </div>
+
+        <div class="guide-section">
+            <h2>Mistakes that cost beginners the most time</h2>
+            <ol>
+                <li><strong>Skipping the description.</strong> The brief is part of the challenge. The best hints are usually free.</li>
+                <li><strong>Starting with the hardest challenge.</strong> Warm up on easy ones. They teach the platform's flag style and build momentum.</li>
+                <li><strong>Tool-hopping without a reason.</strong> Ten minutes with one tool beats one minute with ten tools.</li>
+                <li><strong>Not taking notes.</strong> When you finally solve it at 1am, you'll want to remember how. Future CTF-you reuses everything.</li>
+                <li><strong>Treating "I don't know this tool" as a wall.</strong> Every experienced player learned the tools by being stuck. Searching "how to view EXIF data" mid-CTF is not cheating, it's the job.</li>
+            </ol>
+        </div>
+
+        <div class="guide-section">
+            <h2>Put it into practice</h2>
+            <p>The fastest way to internalize this loop is to run it on real cases. CipherPoint's challenges are built around realistic OSINT and forensics artifacts (metadata, geolocation, breadcrumbs), you earn coins you can spend on hints, and the <a href="leaderboard.html" style="color:#58a6ff;">leaderboard</a> tracks your progress against everyone else.</p>
+            <div class="cta-box">
+                <p style="margin:0;color:#c9d1d9;">Your first solve is usually easier than you think.</p>
+                <a class="btn" href="signup.html">Create an account and try</a>
+            </div>
+        </div>
+
+        <div class="guide-section">
+            <h2>Keep reading</h2>
+            <div class="related">
+                <a href="guide-osint-basics.html"><i class="fa-solid fa-magnifying-glass"></i> OSINT Basics: how investigations actually work</a>
+                <a href="guide-google-dorking.html"><i class="fa-solid fa-magnifying-glass-chart"></i> Google Dorking: search operators for recon</a>
+                <a href="guide-exif-geolocation.html"><i class="fa-solid fa-camera"></i> EXIF metadata and photo geolocation</a>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:1rem;padding:1.5rem 0;">
+            <div>© 2026 CipherPoint · OSINT &amp; Digital Forensics Lab</div>
+            <div style="display:flex;gap:1.2rem;flex-wrap:wrap;">
+                <a href="guides.html">Guides</a>
+                <a href="contact.html">Contact</a>
+                <a href="terms.html">Terms</a>
+                <a href="privacy.html">Privacy</a>
+            </div>
+            <div>Secure OSINT lab infrastructure</div>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,9 +1,12 @@
 https://cipherpoint.linkpc.net/
+https://cipherpoint.linkpc.net/guides.html
+https://cipherpoint.linkpc.net/guide-how-to-solve-ctf.html
+https://cipherpoint.linkpc.net/guide-osint-basics.html
+https://cipherpoint.linkpc.net/guide-google-dorking.html
+https://cipherpoint.linkpc.net/guide-exif-geolocation.html
 https://cipherpoint.linkpc.net/intel-vault.html
 https://cipherpoint.linkpc.net/leaderboard.html
 https://cipherpoint.linkpc.net/about.html
 https://cipherpoint.linkpc.net/contact.html
 https://cipherpoint.linkpc.net/terms.html
 https://cipherpoint.linkpc.net/privacy.html
-https://cipherpoint.linkpc.net/login.html
-https://cipherpoint.linkpc.net/signup.html

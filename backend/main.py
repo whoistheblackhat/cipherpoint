@@ -4173,24 +4173,24 @@ async def serve_sitemap(db: Session = Depends(get_db)):
     today = datetime.utcnow().date().isoformat()
     urls: list[tuple[str, str, float]] = [
         ("/", today, 1.0),
-        ("/login.html", today, 0.9),
-        ("/signup.html", today, 0.9),
+        ("/guides.html", today, 0.9),
+        ("/guide-how-to-solve-ctf.html", today, 0.9),
+        ("/guide-osint-basics.html", today, 0.9),
+        ("/guide-google-dorking.html", today, 0.9),
+        ("/guide-exif-geolocation.html", today, 0.9),
+        ("/intel-vault.html", today, 0.8),
         ("/about.html", today, 0.8),
         ("/contact.html", today, 0.6),
         ("/terms.html", today, 0.4),
         ("/privacy.html", today, 0.4),
         ("/leaderboard.html", today, 0.7),
     ]
-    try:
-        # Include public, approved challenges so each case has its
-        # own indexable URL. We point at the dashboard anchor so the
-        # detail modal opens with that challenge selected.
-        challenges = db.query(Challenge).filter(Challenge.status == "approved").all()
-        for ch in challenges:
-            last_mod = ch.created_at.date().isoformat() if ch.created_at else today
-            urls.append((f"/dashboard.html#challenge-{ch.id}", last_mod, 0.7))
-    except Exception as exc:
-        print(f"[sitemap] DB query failed, serving static fallback: {exc}")
+    # Note: dashboard.html is robots-disallowed (it's a login-gated app
+    # page), so challenge links intentionally do NOT appear here.
+    if False:
+        pass
+    if not urls:
+        print("[sitemap] no urls generated, serving static fallback")
         static = os.path.join(FRONTEND_DIR, "sitemap.xml")
         if os.path.isfile(static):
             with open(static, "r", encoding="utf-8") as fh:
@@ -4261,6 +4261,11 @@ if os.path.isdir(FRONTEND_DIR):
     @app.get("/api-docs.html", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/admin.html", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/notifications.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/guides.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/guide-how-to-solve-ctf.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/guide-osint-basics.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/guide-google-dorking.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/guide-exif-geolocation.html", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/intel-vault.html", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/contact.html", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/404.html", response_class=HTMLResponse, include_in_schema=False)

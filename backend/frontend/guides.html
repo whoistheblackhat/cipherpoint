@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" href="favicon.ico">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guides: OSINT, CTF & Digital Forensics Tutorials | CipherPoint</title>
+    <meta name="description" content="Free practical guides on OSINT, Google dorking, photo geolocation and solving CTF challenges. Real techniques, real commands, no filler — from the CipherPoint lab.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://cipherpoint.linkpc.net/guides.html">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="CipherPoint Guides: OSINT, CTF & Forensics Tutorials">
+    <meta property="og:description" content="Practical guides on OSINT, dorking, geolocation and CTF methodology — free, no signup needed to read.">
+    <meta property="og:url" content="https://cipherpoint.linkpc.net/guides.html">
+    <meta property="og:image" content="https://cipherpoint.linkpc.net/og-image.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .guides-page { max-width: 880px; margin: 0 auto; padding: 60px 24px 80px; }
+        .guides-hero { text-align: center; margin-bottom: 3rem; }
+        .guides-hero h1 { font-size: 2.5rem; font-weight: 800; background: linear-gradient(135deg, #58a6ff 0%, #3fb950 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin-bottom: .8rem; }
+        .guides-hero p { color: #8b949e; font-size: 1.1rem; max-width: 620px; margin: 0 auto; }
+        .guide-card { display: block; background: #161b22; border: 1px solid #30363d; border-radius: 16px; padding: 1.6rem 1.8rem; margin-bottom: 1.2rem; text-decoration: none; transition: border-color .15s ease, transform .15s ease; }
+        .guide-card:hover { border-color: #58a6ff; transform: translateY(-2px); }
+        .guide-card h2 { color: #e6edf3; font-size: 1.25rem; font-weight: 700; margin-bottom: .5rem; display: flex; align-items: center; gap: 12px; }
+        .guide-card h2 i { color: #58a6ff; font-size: 1.1rem; }
+        .guide-card p { color: #8b949e; line-height: 1.65; margin-bottom: .7rem; }
+        .guide-card .tags { display: flex; gap: .5rem; flex-wrap: wrap; }
+        .guide-card .tag { font-size: .75rem; color: #79c0ff; background: #0d1117; border: 1px solid #30363d; border-radius: 999px; padding: .15rem .7rem; }
+        .vault-cta { background: linear-gradient(135deg, #161b22, #1c2333); border: 1px solid #30363d; border-radius: 16px; padding: 1.8rem; text-align: center; margin-top: 2rem; }
+        .vault-cta p { color: #c9d1d9; margin-bottom: 1rem; }
+        .vault-cta a { color: #58a6ff; text-decoration: none; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <nav class="topbar container">
+        <div class="brand-wrap">
+            <a href="index.html" style="text-decoration:none;color:inherit;display:flex;align-items:center;gap:10px;">
+                <div class="brand-mark-icon"><i class="fa-solid fa-user-secret"></i></div>
+                <div class="brand-text">CipherPoint</div>
+            </a>
+        </div>
+        <div>
+            <a href="index.html">Home</a>
+            <a href="guides.html">Guides</a>
+            <a href="contact.html">Contact</a>
+            <a href="login.html">Sign In</a>
+            <a href="signup.html">Sign Up</a>
+        </div>
+    </nav>
+
+    <main class="guides-page">
+        <div class="guides-hero">
+            <h1>Field Guides</h1>
+            <p>Practical write-ups on OSINT, digital forensics and CTF technique. Everything here is free to read, no account needed — though the challenges are more fun.</p>
+        </div>
+
+        <a class="guide-card" href="guide-how-to-solve-ctf.html">
+            <h2><i class="fa-solid fa-flag"></i> How to Solve CTF Challenges: A Working Methodology</h2>
+            <p>The repeatable five-step loop experienced players run: read the brief properly, inventory your artifacts, cheap checks first, pivot with purpose, and get unstuck on purpose. Plus the beginner mistakes that burn the most time.</p>
+            <div class="tags"><span class="tag">CTF</span><span class="tag">Beginner</span><span class="tag">Methodology</span></div>
+        </a>
+
+        <a class="guide-card" href="guide-osint-basics.html">
+            <h2><i class="fa-solid fa-magnifying-glass"></i> OSINT Basics: How Open-Source Investigations Work</h2>
+            <p>What OSINT is (and isn't), how investigators pivot between identifiers, the tools that actually earn their place in 2026, and the OPSEC and ethics rules that keep an investigation clean.</p>
+            <div class="tags"><span class="tag">OSINT</span><span class="tag">Beginner</span><span class="tag">Tools</span></div>
+        </a>
+
+        <a class="guide-card" href="guide-google-dorking.html">
+            <h2><i class="fa-solid fa-magnifying-glass-chart"></i> Google Dorking: Search Operators for OSINT</h2>
+            <p>Every search operator that still works, the ones that quietly died (looking at you, cache:), a reusable domain-recon workflow, and a plain answer to "is this legal?"</p>
+            <div class="tags"><span class="tag">OSINT</span><span class="tag">Recon</span><span class="tag">Google</span></div>
+        </a>
+
+        <a class="guide-card" href="guide-exif-geolocation.html">
+            <h2><i class="fa-solid fa-camera"></i> EXIF Metadata and Photo Geolocation</h2>
+            <p>Read EXIF with ExifTool, turn GPS coordinates into a map pin, learn which platforms strip metadata before it reaches you, and geolocate photos visually when the metadata is already gone.</p>
+            <div class="tags"><span class="tag">Forensics</span><span class="tag">GEOINT</span><span class="tag">ExifTool</span></div>
+        </a>
+
+        <div class="vault-cta">
+            <p>Finished the guides? The <a href="intel-vault.html">Intel Vault</a> goes deeper with published investigation articles — and the challenges let you practice all of it against synthetic cases.</p>
+            <p style="margin-top:.6rem;"><a href="index.html">View open challenges →</a></p>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:1rem;padding:1.5rem 0;">
+            <div>© 2026 CipherPoint · OSINT &amp; Digital Forensics Lab</div>
+            <div style="display:flex;gap:1.2rem;flex-wrap:wrap;">
+                <a href="guides.html">Guides</a>
+                <a href="contact.html">Contact</a>
+                <a href="terms.html">Terms</a>
+                <a href="privacy.html">Privacy</a>
+            </div>
+            <div>Secure OSINT lab infrastructure</div>
+        </div>
+    </footer>
+</body>
+</html>

@@ -4147,6 +4147,20 @@ async def serve_robots():
     )
 
 
+@app.get("/sitemap.txt", include_in_schema=False)
+async def serve_sitemap_txt():
+    """Serve the plain-text sitemap (one URL per line). Some crawlers
+    and webmasters prefer this format; GSC accepts it too."""
+    file_path = os.path.join(FRONTEND_DIR, "sitemap.txt")
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="sitemap.txt not found")
+    return FileResponse(
+        file_path,
+        media_type="text/plain; charset=utf-8",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
 @app.get("/sitemap.xml", include_in_schema=False)
 async def serve_sitemap(db: Session = Depends(get_db)):
     """Dynamically generate sitemap.xml so newly published challenges

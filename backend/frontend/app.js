@@ -2504,7 +2504,12 @@ function escapeHtml(text) {
 }
 
 function shareChallenge(challengeId) {
-  const url = `${window.location.origin}${window.location.pathname.replace('index.html', '')}challenge_detail.html?id=${challengeId}`;
+  // Strip only the filename (keep directory + trailing slash) so the
+  // built link is correct from any page — dashboard, community, etc.
+  // The old .replace('index.html','') no-opped on other pages, gluing
+  // the target page onto the current filename (dashboard.htmlchallenge_detail.html).
+  const base = window.location.pathname.replace(/[^/]*$/, '');
+  const url = `${window.location.origin}${base}challenge_detail.html?id=${challengeId}`;
   if (navigator.clipboard) {
     navigator.clipboard.writeText(url).then(() => {
       showToast('🔗 Challenge link copied to clipboard', 'success');
@@ -3707,7 +3712,8 @@ async function submitReply(event) {
 }
 
 function shareComment(commentId) {
-  const url = `${window.location.origin}${window.location.pathname.replace('comments.html', '')}comments.html#comment-${commentId}`;
+  const base = window.location.pathname.replace(/[^/]*$/, '');
+  const url = `${window.location.origin}${base}comments.html#comment-${commentId}`;
   if (navigator.clipboard) {
     navigator.clipboard.writeText(url).then(() => {
       showToast('🔗 Comment link copied', 'success');

@@ -496,8 +496,17 @@ async function initializePage() {
 
   if (page === 'login' || page === 'signup' || page === 'forgot') {
     if (currentUser && page !== 'forgot') {
-      window.location.href = 'dashboard.html';
+      window.location.href = getPostAuthDestination() || 'dashboard.html';
       return;
+    }
+    const authReturnTarget = getPostAuthDestination();
+    const signupLink = safeGetById('signupLink');
+    const loginLink = safeGetById('loginLink');
+    if (authReturnTarget && signupLink) {
+      signupLink.href = `signup.html?next=${encodeURIComponent(authReturnTarget)}`;
+    }
+    if (authReturnTarget && loginLink) {
+      loginLink.href = `login.html?next=${encodeURIComponent(authReturnTarget)}`;
     }
     const pendingAuthError = sessionStorage.getItem('cipherpoint_auth_error');
     if (pendingAuthError) {
@@ -574,7 +583,8 @@ async function initializePage() {
 
   if (page === 'challenge-detail') {
     if (!currentUser) {
-      window.location.href = 'login.html';
+      const returnTo = window.location.pathname + window.location.search + window.location.hash;
+      window.location.href = `login.html?next=${encodeURIComponent(returnTo)}`;
       return;
     }
     const params = new URLSearchParams(window.location.search);
@@ -587,7 +597,8 @@ async function initializePage() {
 
   if (page === 'comments') {
     if (!currentUser) {
-      window.location.href = 'login.html';
+      const returnTo = window.location.pathname + window.location.search + window.location.hash;
+      window.location.href = `login.html?next=${encodeURIComponent(returnTo)}`;
       return;
     }
     const params = new URLSearchParams(window.location.search);
@@ -597,6 +608,20 @@ async function initializePage() {
       setupCommentsPage();
     }
     return;
+  }
+}
+
+function getPostAuthDestination() {
+  const requested = new URLSearchParams(window.location.search).get('next');
+  if (!requested || !requested.startsWith('/') || requested.startsWith('//')) return null;
+
+  try {
+    const target = new URL(requested, window.location.origin);
+    if (target.origin !== window.location.origin) return null;
+    if (!['/challenge_detail.html', '/comments.html'].includes(target.pathname)) return null;
+    return `${target.pathname}${target.search}${target.hash}`;
+  } catch (error) {
+    return null;
   }
 }
 
@@ -1220,7 +1245,7 @@ async function handleLogin(event) {
 
     showToast('✅ Login successful', 'success');
     sendDeviceFingerprint();
-    window.location.href = 'dashboard.html';
+    window.location.href = getPostAuthDestination() || 'dashboard.html';
   } catch (error) {
     if (messageBox) {
       messageBox.textContent = 'Network error. Please try again.';
@@ -1357,7 +1382,7 @@ async function handleOtpVerifySubmit(event) {
       verifyMessageEl.className = 'form-message show success';
     }
     showToast('✅ Login successful via Telegram OTP', 'success');
-    window.location.href = 'dashboard.html';
+    window.location.href = getPostAuthDestination() || 'dashboard.html';
   } catch (error) {
     if (verifyMessageEl) {
       verifyMessageEl.textContent = 'Network error. Please try again.';
@@ -1455,7 +1480,7 @@ async function handleSignup(event) {
 
     showToast('🎉 Account created successfully', 'success');
     sendDeviceFingerprint();
-    window.location.href = 'dashboard.html';
+    window.location.href = getPostAuthDestination() || 'dashboard.html';
   } catch (error) {
     if (messageBox) {
       messageBox.textContent = 'Network error. Please try again.';
@@ -3173,6 +3198,7 @@ async function loadCommentsPage(challengeId) {
     if (loading) loading.style.display = 'none';
     if (errorEl) errorEl.style.display = 'none';
     if (content) content.style.display = 'block';
+    scrollToSharedComment();
   } catch (error) {
     console.error('Error loading comments page:', error);
     if (loading) loading.style.display = 'none';
@@ -3555,7 +3581,7 @@ function renderRedditComment(comment, challengeId, depth) {
   const avatarColor = getAvatarColor(comment.username);
 
   return `
-    <div class="reddit-comment ${isCollapsed}" data-comment-id="${comment.id}">
+    <div class="reddit-comment ${isCollapsed}" id="comment-${comment.id}" data-comment-id="${comment.id}">
       <div class="vote-column">
         <div class="vote-count">${voteCount}</div>
       </div>
@@ -3576,7 +3602,7 @@ function renderRedditComment(comment, challengeId, depth) {
           <button class="comment-action" onclick="replyToComment(${comment.id}, ${challengeId})">
             <i class="fa-solid fa-reply"></i> Reply
           </button>
-          <button class="comment-action" onclick="shareComment(${comment.id})">
+          <button class="comment-action" onclick="shareComment(${comment.id}, ${challengeId})">
             <i class="fa-solid fa-share"></i> Share
           </button>
           <button class="comment-action" type="button" onclick="reportComment(${comment.id}, ${challengeId})">
@@ -3711,18 +3737,35 @@ async function submitReply(event) {
   }
 }
 
-function shareComment(commentId) {
-  const base = window.location.pathname.replace(/[^/]*$/, '');
-  const url = `${window.location.origin}${base}comments.html#comment-${commentId}`;
+function shareComment(commentId, challengeId) {
+  const url = new URL('/comments.html', window.location.origin);
+  url.searchParams.set('id', challengeId);
+  url.hash = `comment-${commentId}`;
   if (navigator.clipboard) {
-    navigator.clipboard.writeText(url).then(() => {
+    navigator.clipboard.writeText(url.href).then(() => {
       showToast('🔗 Comment link copied', 'success');
     }).catch(() => {
-      showToast('🔗 Share: ' + url, 'success');
+      showToast('🔗 Share: ' + url.href, 'success');
     });
   } else {
-    showToast('🔗 Share: ' + url, 'success');
+    showToast('🔗 Share: ' + url.href, 'success');
   }
+}
+
+function scrollToSharedComment() {
+  const match = window.location.hash.match(/^#comment-(\d+)$/);
+  if (!match) return;
+  const comment = document.getElementById(`comment-${match[1]}`);
+  if (!comment) return;
+
+  let current = comment;
+  while (current && current.classList.contains('reddit-comment')) {
+    current.classList.remove('collapsed');
+    const collapseIcon = current.querySelector(':scope > .comment-body-wrap .collapse-btn i');
+    if (collapseIcon) collapseIcon.className = 'fa-solid fa-minus';
+    current = current.parentElement?.closest('.reddit-comment');
+  }
+  comment.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function reportComment(commentId, challengeId) {

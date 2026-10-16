@@ -1,10 +1,10 @@
 # ============================================
 # CipherPoint — dependency pins (kept in sync with backend/requirements.txt)
 #
-# NOTE: the deployed service installs backend/requirements.txt (Render
-# rootDir: backend). This root copy exists only for convenience — it used
-# to hold an old, vulnerable pin set (fastapi 0.95 / starlette 0.26 /
-# gunicorn 21.2). Do NOT let it drift from backend/requirements.txt.
+# NOTE: Botkeep installs this root-level file before changing into backend.
+# Render uses backend/requirements.txt because its rootDir is backend.
+# Keep both files synchronized; this root file must not drift to an old,
+# vulnerable pin set (fastapi 0.95 / starlette 0.26 / gunicorn 21.2).
 # ============================================
 
 fastapi==0.135.3

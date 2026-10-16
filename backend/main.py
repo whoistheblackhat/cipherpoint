@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, Header, UploadFile, File, R
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 # Workaround: starlette 0.26 uses `anyio.to_thread` lazily.
 # anyio 4.x has lazy __getattr__ that fails on some Python builds.
@@ -178,8 +179,8 @@ def _wants_html(request: Request) -> bool:
     return False
 
 
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     """Custom HTTP exception handler.
 
     - Browser GET requests for non-API pages get redirected to the matching
@@ -4239,6 +4240,7 @@ if os.path.isdir(FRONTEND_DIR):
 
     # Root serves index.html (landing page)
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/index.html", response_class=HTMLResponse, include_in_schema=False)
     async def serve_index():
         return FileResponse(
             os.path.join(FRONTEND_DIR, "index.html"),

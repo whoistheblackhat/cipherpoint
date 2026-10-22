@@ -724,6 +724,25 @@ function bindGlobalEvents() {
         if (icon) icon.className = 'fa-solid fa-xmark';
       }
     });
+
+    topLinks.addEventListener('click', (event) => {
+      if (event.target.closest('a')) {
+        topLinks.classList.remove('mobile-open');
+        mobileMenuToggle.setAttribute('aria-expanded', 'false');
+        const icon = mobileMenuToggle.querySelector('i');
+        if (icon) icon.className = 'fa-solid fa-bars';
+      }
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && topLinks.classList.contains('mobile-open')) {
+        topLinks.classList.remove('mobile-open');
+        mobileMenuToggle.setAttribute('aria-expanded', 'false');
+        mobileMenuToggle.focus();
+        const icon = mobileMenuToggle.querySelector('i');
+        if (icon) icon.className = 'fa-solid fa-bars';
+      }
+    });
   }
 
   const sectionHeaders = document.querySelectorAll('.sidebar-section-header');
@@ -1527,7 +1546,10 @@ function renderCommunityChallenges() {
   });
 
   if (!sortedChallenges.length) {
-    container.innerHTML = '<div class="loading">No new community challenges yet. You\'ve solved everything that\'s available!</div>';
+    const emptyMessage = communityChallenges.length
+      ? 'You have solved every available community challenge. Check back soon for new cases.'
+      : 'No community challenges have been published yet. Use Create CTF to share the first case.';
+    container.innerHTML = `<div class="feed-empty-state"><h3>No community cases to show</h3><p>${emptyMessage}</p></div>`;
     return;
   }
 
@@ -1571,7 +1593,7 @@ function renderCommunityChallenges() {
         </div>
 
         <div class="challenge-description">
-          ${escapeHtml((challenge.description || '').substring(0, 180))}...
+          ${escapeHtml(previewText(challenge.description, 180))}
         </div>
 
         <div class="card-action-bar">
@@ -2975,6 +2997,11 @@ async function handleCommunityChallengeSubmit(event) {
   }
 }
 
+function previewText(value, maxLength) {
+  const text = String(value || '').trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength).trimEnd()}...` : text;
+}
+
 function renderChallenges() {
   const feed = safeGetById('challengeFeed') || safeGetById('challengesFeed');
   if (!feed) return;
@@ -2982,8 +3009,16 @@ function renderChallenges() {
   const solvedSet = new Set(Array.isArray(currentUser?.solved_challenges) ? currentUser.solved_challenges : []);
   const visible = filteredChallenges.filter((c) => !solvedSet.has(c.id));
 
+  if (!filteredChallenges.length) {
+    feed.innerHTML = '<div class="feed-empty-state"><h3>No matching cases</h3><p>Try a different search term or clear the search to see all available challenges.</p></div>';
+    return;
+  }
+
   if (!visible.length) {
-    feed.innerHTML = '<div class="loading">No new challenges available. You\'ve solved everything!</div>';
+    const emptyMessage = allChallenges.length
+      ? 'You have solved every available challenge. Browse community cases or check back soon for new releases.'
+      : 'There are no challenges available right now. Browse community cases or check back soon for new releases.';
+    feed.innerHTML = `<div class="feed-empty-state"><h3>${allChallenges.length ? 'You are all caught up' : 'No challenges are live yet'}</h3><p>${emptyMessage}</p><a class="btn btn-light" href="community.html">Browse Community CTFs</a></div>`;
     return;
   }
 
@@ -3028,7 +3063,7 @@ function renderChallenges() {
         </div>
 
         <div class="challenge-description">
-          ${escapeHtml((challenge.description || '').substring(0, 180))}...
+          ${escapeHtml(previewText(challenge.description, 180))}
         </div>
 
         <div class="card-action-bar">
@@ -4438,6 +4473,10 @@ function setupForgotPassword() {
 function initNetworkAnimation() {
   const canvas = document.getElementById('networkCanvas');
   if (!canvas) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    canvas.style.display = 'none';
+    return;
+  }
 
   const ctx = canvas.getContext('2d');
   let particles = [];

@@ -132,16 +132,16 @@
                 <p>Drop us a line and we'll get back to you within 48 hours. For security reports, please mark the subject <code style="background:#0d1117;border:1px solid #30363d;padding:1px 6px;border-radius:4px;font-size:0.85em;">[SECURITY]</code>.</p>
                 <form id="contactForm">
                     <div class="field-wrap">
-                        <label>Your name</label>
-                        <input type="text" name="name" required maxlength="80" placeholder="e.g. Jane Doe">
+                        <label for="contactName">Your name</label>
+                        <input id="contactName" type="text" name="name" required maxlength="80" placeholder="e.g. Jane Doe">
                     </div>
                     <div class="field-wrap">
-                        <label>Email</label>
-                        <input type="email" name="email" required maxlength="254" placeholder="you@example.com">
+                        <label for="contactEmail">Email</label>
+                        <input id="contactEmail" type="email" name="email" required maxlength="254" placeholder="you@example.com">
                     </div>
                     <div class="field-wrap">
-                        <label>Topic</label>
-                        <select name="topic" required>
+                        <label for="contactTopic">Topic</label>
+                        <select id="contactTopic" name="topic" required>
                             <option value="general">General question</option>
                             <option value="bug">Bug report</option>
                             <option value="case">Propose a case file</option>
@@ -151,12 +151,12 @@
                         </select>
                     </div>
                     <div class="field-wrap">
-                        <label>Subject</label>
-                        <input type="text" name="subject" required maxlength="120" placeholder="What's it about?">
+                        <label for="contactSubject">Subject</label>
+                        <input id="contactSubject" type="text" name="subject" required maxlength="120" placeholder="What's it about?">
                     </div>
                     <div class="field-wrap">
-                        <label>Message</label>
-                        <textarea name="body" required maxlength="2000" placeholder="Tell us what's on your mind…"></textarea>
+                        <label for="contactBody">Message</label>
+                        <textarea id="contactBody" name="body" required maxlength="2000" placeholder="Tell us what's on your mind…"></textarea>
                     </div>
                     <div id="contactMessage" class="form-message"></div>
                     <div style="display:flex;gap:10px;flex-wrap:wrap;">
@@ -171,32 +171,38 @@
                     <h2><i class="fa-solid fa-satellite-dish"></i> Direct Channels</h2>
                     <p>For the fastest response, hit us up on one of these.</p>
 
-                    <a class="quick-row" data-platform="instagram" href="https://instagram.com/who_is_the_black_hat" target="_blank" rel="noopener noreferrer">
-                        <div class="platform-icon"><i class="fa-brands fa-instagram"></i></div>
-                        <div class="text">
-                            <div class="label">Instagram</div>
-                            <div class="handle">@who_is_the_black_hat</div>
-                        </div>
+                    <div class="quick-row" data-platform="instagram">
+                        <a class="quick-row-link" href="https://instagram.com/who_is_the_black_hat" target="_blank" rel="noopener noreferrer">
+                            <div class="platform-icon"><i class="fa-brands fa-instagram"></i></div>
+                            <div class="text">
+                                <div class="label">Instagram</div>
+                                <div class="handle">@who_is_the_black_hat</div>
+                            </div>
+                        </a>
                         <button class="copy-btn" type="button" onclick="event.preventDefault(); copyToClipboard('@who_is_the_black_hat', this);"><i class="fa-solid fa-copy"></i> Copy</button>
-                    </a>
+                    </div>
 
-                    <a class="quick-row" data-platform="youtube" href="https://youtube.com/@whoistheblackhat" target="_blank" rel="noopener noreferrer">
-                        <div class="platform-icon"><i class="fa-brands fa-youtube"></i></div>
-                        <div class="text">
-                            <div class="label">YouTube</div>
-                            <div class="handle">@whoistheblackhat</div>
-                        </div>
+                    <div class="quick-row" data-platform="youtube">
+                        <a class="quick-row-link" href="https://youtube.com/@whoistheblackhat" target="_blank" rel="noopener noreferrer">
+                            <div class="platform-icon"><i class="fa-brands fa-youtube"></i></div>
+                            <div class="text">
+                                <div class="label">YouTube</div>
+                                <div class="handle">@whoistheblackhat</div>
+                            </div>
+                        </a>
                         <button class="copy-btn" type="button" onclick="event.preventDefault(); copyToClipboard('@whoistheblackhat', this);"><i class="fa-solid fa-copy"></i> Copy</button>
-                    </a>
+                    </div>
 
-                    <a class="quick-row" data-platform="email" href="mailto:contact@cipherpoint.linkpc.net">
-                        <div class="platform-icon"><i class="fa-solid fa-envelope"></i></div>
-                        <div class="text">
-                            <div class="label">Email</div>
-                            <div class="handle">contact@cipherpoint.linkpc.net</div>
-                        </div>
+                    <div class="quick-row" data-platform="email">
+                        <a class="quick-row-link" href="mailto:contact@cipherpoint.linkpc.net">
+                            <div class="platform-icon"><i class="fa-solid fa-envelope"></i></div>
+                            <div class="text">
+                                <div class="label">Email</div>
+                                <div class="handle">contact@cipherpoint.linkpc.net</div>
+                            </div>
+                        </a>
                         <button class="copy-btn" type="button" onclick="event.preventDefault(); copyToClipboard('contact@cipherpoint.linkpc.net', this);"><i class="fa-solid fa-copy"></i> Copy</button>
-                    </a>
+                    </div>
                 </div>
 
                 <div class="contact-card" style="margin-top:16px;">

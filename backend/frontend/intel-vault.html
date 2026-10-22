@@ -387,9 +387,6 @@
                     </div>
                     <h3 class="article-title">${escapeHtml(a.title)}</h3>
                     ${a.summary ? `<p class="article-summary">${escapeHtml(a.summary)}</p>` : ''}
-                    <div class="article-meta">
-                        <span class="author-pill"><i class="fa-solid fa-user"></i> Author #${a.author_id ?? '—'}</span>
-                    </div>
                 </article>
             `).join('');
             detailEl.classList.remove('active');
@@ -420,9 +417,6 @@
                 <h1 style="font-size:1.6rem;font-weight:800;margin:6px 0 12px;line-height:1.25;">${escapeHtml(a.title)}</h1>
                 ${a.telegram_file_id ? `<div class="article-media" id="articleMedia"></div>` : ''}
                 <div class="article-body">${escapeHtml(a.content)}</div>
-                <div class="article-meta" style="margin-top:12px;">
-                    <span class="author-pill"><i class="fa-solid fa-user"></i> Author #${a.author_id ?? '—'}</span>
-                </div>
             `;
             $('articleBack').addEventListener('click', () => {
                 detailEl.classList.remove('active');

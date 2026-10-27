@@ -104,3 +104,4 @@ prompt.txt
 # --- Frontend local (keep frontend/ source, ignore local overrides) ---
 frontend/.htaccess
 frontend/secrets.js
+/day-01.txt

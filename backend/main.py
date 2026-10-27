@@ -4484,6 +4484,7 @@ if os.path.isdir(FRONTEND_DIR):
     @app.get("/app.js", include_in_schema=False)
     @app.get("/admin.js", include_in_schema=False)
     @app.get("/styles.css", include_in_schema=False)
+    @app.get("/cipher-day.css", include_in_schema=False)
     async def serve_static_asset(request: Request):
         rel = request.url.path.lstrip("/")
         file_path = os.path.join(FRONTEND_DIR, rel)

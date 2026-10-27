@@ -150,6 +150,90 @@ button, input {
   display: none !important;
 }
 
+#cipherDayNavLink[hidden],
+.sidebar-link[hidden],
+#cipherDayPromo[hidden] {
+  display: none !important;
+}
+
+.cipher-day-promo-section {
+  position: relative;
+  z-index: 1;
+  margin: 0 auto 34px;
+}
+
+.cipher-day-promo-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  padding: clamp(22px, 4vw, 36px);
+  overflow: hidden;
+  border: 1px solid rgba(109, 224, 208, .28);
+  border-radius: 18px;
+  background:
+    radial-gradient(ellipse at 92% 10%, rgba(59, 142, 255, .16), transparent 34%),
+    linear-gradient(115deg, rgba(14, 37, 48, .98), rgba(11, 24, 37, .98));
+  box-shadow: 0 20px 55px rgba(0, 0, 0, .2);
+}
+
+.cipher-day-promo-copy {
+  max-width: 760px;
+}
+
+.cipher-day-promo-kicker {
+  color: var(--teal);
+  font: 800 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .14em;
+}
+
+.cipher-day-promo-card h2 {
+  margin-top: 9px;
+  color: var(--text);
+  font-size: clamp(21px, 3vw, 30px);
+  letter-spacing: -.025em;
+}
+
+.cipher-day-promo-card p {
+  max-width: 680px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.cipher-day-promo-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px 20px;
+  margin-top: 16px;
+  color: #d3e2e8;
+  font-size: 12px;
+}
+
+.cipher-day-promo-meta i {
+  margin-right: 6px;
+  color: var(--amber);
+}
+
+.cipher-day-promo-card > .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.cipher-day-promo-disabled {
+  opacity: .58;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+@media (max-width: 680px) {
+  .cipher-day-promo-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .top-actions {
   display: flex;
   align-items: center;

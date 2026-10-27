@@ -539,6 +539,12 @@ async function initializePage() {
   }
 
   if (page === 'cipher-day' || page === 'cipher-day-machine') {
+    if (!currentUser) {
+      const returnTo = window.location.pathname + window.location.search + window.location.hash;
+      window.location.replace(`login.html?next=${encodeURIComponent(returnTo)}`);
+      return;
+    }
+    document.body.classList.add('is-authenticated');
     await initializeCipherDayPage(page === 'cipher-day-machine');
     return;
   }
@@ -1604,7 +1610,9 @@ async function initializeCipherDayPage(machinePage) {
   };
 
   try {
-    const response = await fetch(`${API_BASE_URL}/cipher-day/status`, { cache: 'no-store' });
+    const token = localStorage.getItem('token');
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    const response = await fetch(`${API_BASE_URL}/cipher-day/status`, { cache: 'no-store', headers });
     if (!response.ok) throw new Error('Cipher Day status is unavailable.');
     eventStatus = await response.json();
     serverOffset = Date.parse(eventStatus.server_time || '') - Date.now();
@@ -2941,17 +2949,45 @@ async function renderRecentActivity() {
   }
 }
 
-function renderMedia(mediaUrl) {
+function renderMedia(mediaUrl, requiresAuth = false) {
   if (!mediaUrl) {
     return '<span class="media-placeholder"><i class="fa-solid fa-image"></i><span>Media unavailable</span></span>';
   }
   const downloadHref = `${mediaUrl}?download=1`;
-  const downloadBtn = `<a class="media-download-btn" href="${downloadHref}" download title="Download to inspect metadata locally"><i class="fa-solid fa-download"></i><span>Download</span></a>`;
+  const downloadBtn = requiresAuth
+    ? ''
+    : `<a class="media-download-btn" href="${downloadHref}" download title="Download to inspect metadata locally"><i class="fa-solid fa-download"></i><span>Download</span></a>`;
+  const image = requiresAuth
+    ? `<img data-auth-media-src="${escapeHtml(mediaUrl)}" alt="Challenge media" loading="lazy" onerror="handleMediaError(this)"/>`
+    : `<img src="${mediaUrl}" alt="Challenge media" loading="lazy" onerror="handleMediaError(this)"/>`;
   // All uploads now go through sendDocument to preserve EXIF/metadata,
   // so file_id prefix is no longer a reliable video hint. We render an
   // <img> first; if it's actually a video, handleMediaError swaps in a
   // <video> element via the onerror fallback chain.
-  return `<div class="media-wrapper"><img src="${mediaUrl}" alt="Challenge media" loading="lazy" onerror="handleMediaError(this)"/>${downloadBtn}</div>`;
+  return `<div class="media-wrapper">${image}${downloadBtn}</div>`;
+}
+
+async function loadAuthenticatedMedia(container) {
+  const token = localStorage.getItem('token');
+  if (!token) return;
+  const images = container.querySelectorAll('img[data-auth-media-src]');
+  for (const image of images) {
+    try {
+      const source = image.dataset.authMediaSrc;
+      const mediaUrl = new URL(source, window.location.origin);
+      if (mediaUrl.origin !== window.location.origin || !mediaUrl.pathname.startsWith('/api/media/')) {
+        throw new Error('Invalid protected media URL');
+      }
+      const response = await fetch(mediaUrl.href, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error(`Protected media request failed (${response.status})`);
+      image.src = URL.createObjectURL(await response.blob());
+    } catch (error) {
+      console.error('Unable to load protected challenge media:', error);
+      image.parentElement.innerHTML = '<span class="media-placeholder"><i class="fa-solid fa-broken-image"></i><span>Media unavailable</span></span>';
+    }
+  }
 }
 
 function handleMediaError(element) {
@@ -3406,7 +3442,11 @@ async function loadChallengeDetailPage(challengeId) {
     if (safeGetById('detailTime')) safeGetById('detailTime').textContent = `• ${challenge.created_at ? new Date(challenge.created_at).toLocaleDateString() : 'Today'}`;
     if (safeGetById('detailDifficulty')) safeGetById('detailDifficulty').textContent = escapeHtml(challenge.difficulty || 'Open');
     if (safeGetById('detailTitle')) safeGetById('detailTitle').textContent = challenge.title;
-    if (safeGetById('detailMedia')) safeGetById('detailMedia').innerHTML = renderMedia(challenge.media_url || '');
+    const detailMedia = safeGetById('detailMedia');
+    if (detailMedia) {
+      detailMedia.innerHTML = renderMedia(challenge.media_url || '', challenge.is_cipher_day === true);
+      if (challenge.is_cipher_day) await loadAuthenticatedMedia(detailMedia);
+    }
     if (safeGetById('detailDescription')) safeGetById('detailDescription').textContent = challenge.description || '';
     if (safeGetById('detailReward')) safeGetById('detailReward').textContent = `${challenge.points_reward} Coins`;
     if (safeGetById('detailSolved')) safeGetById('detailSolved').textContent = `${challenge.solved_count || 0} Analysts`;
@@ -3599,7 +3639,7 @@ async function openChallengeModal(challengeId, singlePageMode = false) {
     }
 
     const challenge = await response.json();
-    renderChallengeModal(challenge);
+    await renderChallengeModal(challenge);
 
     const modal = safeGetById('challengeModal');
     if (modal) {
@@ -3616,7 +3656,7 @@ async function openChallengeModal(challengeId, singlePageMode = false) {
   }
 }
 
-function renderChallengeModal(challenge) {
+async function renderChallengeModal(challenge) {
   const container = safeGetById('challengeDetails');
   if (!container) return;
 
@@ -3653,7 +3693,7 @@ function renderChallengeModal(challenge) {
       <div class="modal-title">${escapeHtml(challenge.title)}</div>
 
       <div class="modal-media">
-        ${renderMedia(challenge.media_url || '')}
+        ${renderMedia(challenge.media_url || '', challenge.is_cipher_day === true)}
       </div>
 
       <div class="modal-description">
@@ -3700,6 +3740,7 @@ function renderChallengeModal(challenge) {
       </div>
     </div>
   `;
+  if (challenge.is_cipher_day) await loadAuthenticatedMedia(container);
 }
 
 function toggleComments() {
@@ -3721,7 +3762,9 @@ async function loadComments(challengeId, fallbackComment = null) {
 
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const response = await fetch(`${API_BASE_URL}/challenges/${challengeId}/comments`);
+      const token = localStorage.getItem('token');
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const response = await fetch(`${API_BASE_URL}/challenges/${challengeId}/comments`, { headers });
       if (!response.ok) throw new Error(`Comments fetch failed (${response.status})`);
       const comments = mergeFallbackComment(await response.json(), fallbackComment);
 

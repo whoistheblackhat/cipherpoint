@@ -10,12 +10,17 @@
 [hidden] { display: none !important; }
 
 .cipher-day-page {
+  visibility: hidden;
   min-height: 100vh;
   color: var(--event-ink);
   background:
     radial-gradient(ellipse at 82% 0%, rgba(32, 122, 111, .24), transparent 34rem),
     radial-gradient(ellipse at 8% 32%, rgba(32, 81, 115, .18), transparent 32rem),
     #08121b;
+}
+
+.cipher-day-page.is-authenticated {
+  visibility: visible;
 }
 
 .cipher-day-topbar {

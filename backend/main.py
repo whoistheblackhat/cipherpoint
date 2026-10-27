@@ -482,7 +482,8 @@ async def add_security_headers(request: Request, call_next):
     # Relaxed CSP to allow CDN assets (fonts, icons) while still blocking inline scripts.
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        f"script-src 'self' 'unsafe-inline' 'unsafe-eval' {cipher_asset_origin} https://challenges.cloudflare.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
+        f"script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: {cipher_asset_origin} https://challenges.cloudflare.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
+        "worker-src 'self' blob:; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
         "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
         "img-src 'self' data: https://cdnjs.cloudflare.com; "
@@ -1119,6 +1120,12 @@ def verify_token(authorization: Optional[str] = Header(None), db: Session = Depe
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
+def require_cipher_day_user(authorization: Optional[str], db: Session) -> int:
+    if not is_cipher_day_window_open():
+        raise HTTPException(status_code=404, detail="Challenge not found")
+    return verify_token(authorization, db)
+
+
 def get_current_admin_user(user_id: int = Depends(verify_token), db: Session = Depends(get_db)):
     """Return the authenticated user only if they are an admin."""
     user = db.query(User).filter(User.id == user_id).first()
@@ -1178,11 +1185,19 @@ class CommentCreateRequest(BaseModel):
 
 
 @app.get("/api/challenges/{challenge_id}/comments")
-def list_comments(challenge_id: int, db: Session = Depends(get_db)):
+def list_comments(
+    challenge_id: int,
+    response: Response,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
     """Return all top-level comments for a challenge with nested replies."""
     challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found")
+    if is_cipher_day_challenge(challenge):
+        require_cipher_day_user(authorization, db)
+        response.headers["Cache-Control"] = "private, no-store"
 
     comments = (
         db.query(Comment)
@@ -2818,6 +2833,8 @@ def get_all_challenges(limit: Optional[int] = None, db: Session = Depends(get_db
     if cached is not None:
         return cached
     challenge_query = db.query(Challenge).filter(Challenge.status.notin_(["rejected", "removed"]))
+    if CIPHER_DAY_CHALLENGE_ID > 0:
+        challenge_query = challenge_query.filter(Challenge.id != CIPHER_DAY_CHALLENGE_ID)
     if normalized_limit is not None:
         challenge_query = challenge_query.limit(normalized_limit)
     challenges = challenge_query.all()
@@ -2886,6 +2903,7 @@ def get_community_challenges(db: Session = Depends(get_db)):
 @app.get("/api/challenges/{challenge_id}")
 def get_challenge_details(
     challenge_id: int,
+    response: Response,
     authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db)
 ):
@@ -2900,8 +2918,11 @@ def get_challenge_details(
 
     if not challenge or challenge.status in {"rejected", "removed"}:
         raise HTTPException(status_code=404, detail="Challenge not found")
-    if is_cipher_day_challenge(challenge) and not is_cipher_day_window_open():
-        raise HTTPException(status_code=404, detail="Challenge not found")
+    is_cipher_day = is_cipher_day_challenge(challenge)
+    event_viewer_id = None
+    if is_cipher_day:
+        event_viewer_id = require_cipher_day_user(authorization, db)
+        response.headers["Cache-Control"] = "private, no-store"
 
     solved_count = db.query(SolvedChallenge).filter(SolvedChallenge.challenge_id == challenge_id).count()
     comments_count = db.query(Comment).filter(Comment.challenge_id == challenge_id).count()
@@ -2910,7 +2931,9 @@ def get_challenge_details(
     # solved this challenge may see the walkthrough text.
     viewer_id: Optional[int] = None
     viewer_is_admin = False
-    if authorization:
+    if is_cipher_day:
+        viewer_id = event_viewer_id
+    elif authorization:
         try:
             scheme, token = authorization.split()
             if scheme.lower() == "bearer":
@@ -2941,6 +2964,7 @@ def get_challenge_details(
         "difficulty": challenge.difficulty,
         "description": challenge.description,
         "media_url": f"/api/media/{challenge.telegram_file_id}" if challenge.telegram_file_id else None,
+        "is_cipher_day": is_cipher_day,
         "points_reward": challenge.points_reward,
         "has_hint_1": bool(challenge.hint_1),
         "has_hint_2": bool(challenge.hint_2),
@@ -3619,6 +3643,8 @@ def unlock_hint(payload: HintRequest, user_id: int = Depends(verify_token), db: 
         raise HTTPException(status_code=404, detail="Challenge not found")
     if challenge.status in {"rejected", "removed"}:
         raise HTTPException(status_code=404, detail="Challenge not found")
+    if is_cipher_day_challenge(challenge) and not is_cipher_day_window_open():
+        raise HTTPException(status_code=404, detail="Challenge not found")
     ensure_user_not_banned(user_id, db)
     if hint_number not in [1, 2]:
         raise HTTPException(status_code=400, detail="Invalid hint number")
@@ -4056,7 +4082,13 @@ def bots_health(user_id: int = Depends(verify_token)):
 # ==================== MEDIA PROXY ROUTES ====================
 
 @app.get("/api/media/{file_id}")
-def get_media(file_id: str, download: int = 0, request: Request = None):
+def get_media(
+    file_id: str,
+    download: int = 0,
+    request: Request = None,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
     """Proxy endpoint for Telegram media.
 
     When `?download=1` is set, force a Content-Disposition: attachment
@@ -4065,11 +4097,25 @@ def get_media(file_id: str, download: int = 0, request: Request = None):
     """
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", file_id):
         raise HTTPException(status_code=400, detail="Invalid media identifier")
+    cipher_day_challenge = (
+        db.query(Challenge)
+        .filter(
+            Challenge.id == CIPHER_DAY_CHALLENGE_ID,
+            Challenge.telegram_file_id == file_id,
+        )
+        .first()
+        if CIPHER_DAY_CHALLENGE_ID > 0
+        else None
+    )
+    if cipher_day_challenge:
+        require_cipher_day_user(authorization, db)
     try:
         response = get_telegram_file(file_id)
     except Exception as e:
         print(f"[MEDIA] Failed to fetch {file_id[:24]}...: {e}")
         raise HTTPException(status_code=404, detail="Media unavailable")
+    if cipher_day_challenge:
+        response.headers["Cache-Control"] = "private, no-store"
 
     if not download:
         return response
@@ -4103,7 +4149,7 @@ def get_media(file_id: str, download: int = 0, request: Request = None):
             media_type=ct,
             headers={
                 "Content-Disposition": f'attachment; filename="{filename}"',
-                "Cache-Control": "private, max-age=300",
+                "Cache-Control": "private, no-store" if cipher_day_challenge else "private, max-age=300",
             },
         )
 
@@ -4112,7 +4158,7 @@ def get_media(file_id: str, download: int = 0, request: Request = None):
         media_type=ct,
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"',
-            "Cache-Control": "private, max-age=300",
+            "Cache-Control": "private, no-store" if cipher_day_challenge else "private, max-age=300",
         },
     )
 
@@ -4162,8 +4208,14 @@ def public_config():
 
 
 @app.get("/api/cipher-day/status")
-def cipher_day_status(db: Session = Depends(get_db)):
+def cipher_day_status(
+    response: Response,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
     """Public event state; never returns the challenge answer."""
+    response.headers["Cache-Control"] = "no-store"
+    user_id = verify_token(authorization, db) if authorization else None
     challenge = (
         db.query(Challenge).filter(Challenge.id == CIPHER_DAY_CHALLENGE_ID).first()
         if CIPHER_DAY_CHALLENGE_ID > 0
@@ -4176,9 +4228,11 @@ def cipher_day_status(db: Session = Depends(get_db)):
         and not challenge.is_community
         and (challenge.points_reward or 0) >= 500
     )
-    launch_ready = bool(window_open and challenge_ready and CIPHER_DAY_ASSET_BASE_URL)
+    launch_ready = bool(user_id and window_open and challenge_ready and CIPHER_DAY_ASSET_BASE_URL)
     if not window_open:
         message = "Cipher Day is not active."
+    elif not user_id:
+        message = "Sign in to access the Cipher Day machine."
     elif not challenge_ready:
         message = "Cipher Day challenge is not configured yet."
     elif not CIPHER_DAY_ASSET_BASE_URL:
@@ -4191,7 +4245,7 @@ def cipher_day_status(db: Session = Depends(get_db)):
         "server_time": datetime.utcnow().isoformat() + "Z",
         "starts_at": CIPHER_DAY_STARTS_AT or None,
         "ends_at": CIPHER_DAY_ENDS_AT or None,
-        "challenge_id": CIPHER_DAY_CHALLENGE_ID or None,
+        "challenge_id": (CIPHER_DAY_CHALLENGE_ID or None) if launch_ready else None,
         "title": challenge.title if challenge_ready else "The Quiet Relay",
         "points": challenge.points_reward if challenge_ready else 500,
         "asset_base_url": CIPHER_DAY_ASSET_BASE_URL if launch_ready else None,

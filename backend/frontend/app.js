@@ -490,6 +490,7 @@ async function initializePage() {
 
   if (page === 'landing') {
     updateLandingAuthState();
+    await loadCipherDayPromo();
     initNetworkAnimation();
     return;
   }
@@ -525,6 +526,7 @@ async function initializePage() {
       return;
     }
     setDashboardStats();
+    await loadCipherDayPromo();
     await loadChallenges();
     await loadCommunityChallenges();
     if (currentUser && currentUser.is_admin) {
@@ -533,6 +535,11 @@ async function initializePage() {
     await renderTopChallenges();
     await renderRecentActivity();
     await loadLeaderboard();
+    return;
+  }
+
+  if (page === 'cipher-day' || page === 'cipher-day-machine') {
+    await initializeCipherDayPage(page === 'cipher-day-machine');
     return;
   }
 
@@ -1509,6 +1516,270 @@ async function handleSignup(event) {
   }
 }
 
+async function loadCipherDayPromo() {
+  const promo = safeGetById('cipherDayPromo');
+  const navLink = safeGetById('cipherDayNavLink');
+  const landingLink = safeGetById('cipherDayLandingLink');
+  if (!promo && !navLink && !landingLink) return;
+  try {
+    const response = await fetch(`${API_BASE_URL}/cipher-day/status`, { cache: 'no-store' });
+    if (!response.ok) throw new Error('Cipher Day status request failed');
+    const status = await response.json();
+    const visible = status.enabled === true;
+    if (promo) promo.hidden = !visible;
+    if (navLink) navLink.hidden = !visible;
+    if (landingLink) landingLink.hidden = !visible;
+  } catch (error) {
+    console.warn('Cipher Day availability could not be loaded:', error);
+    if (promo) promo.hidden = true;
+    if (navLink) navLink.hidden = true;
+    if (landingLink) landingLink.hidden = true;
+  }
+}
+
+async function initializeCipherDayPage(machinePage) {
+  const messageElements = document.querySelectorAll('[data-cipher-message]');
+  const launchButton = safeGetById('cipherDayLaunch');
+  const resetButton = safeGetById('cipherDayReset');
+  const submitButton = safeGetById('cipherDaySubmit');
+  const eventState = document.querySelector('[data-cipher-event-state]');
+  const countdown = document.querySelector('[data-cipher-countdown]');
+  let countdownTimer = 0;
+  let eventStatus = null;
+  let serverOffset = 0;
+  let emulator = null;
+  let serialReady = false;
+  let bootBuffer = '';
+
+  const setEventMessage = (message) => {
+    messageElements.forEach((element) => { element.textContent = message || ''; });
+  };
+  const setVmStatus = (message) => {
+    const status = safeGetById('cipherDayVmStatus');
+    if (status) status.textContent = message;
+  };
+  const updateCountdown = () => {
+    if (!countdown || !eventStatus) return;
+    const endsAt = Date.parse(eventStatus.ends_at || '');
+    if (!Number.isFinite(endsAt)) {
+      countdown.textContent = 'SCHEDULED';
+      return;
+    }
+    const remaining = Math.max(0, Math.floor((endsAt - (Date.now() + serverOffset)) / 1000));
+    const hours = String(Math.floor(remaining / 3600)).padStart(2, '0');
+    const minutes = String(Math.floor((remaining % 3600) / 60)).padStart(2, '0');
+    const seconds = String(remaining % 60).padStart(2, '0');
+    countdown.textContent = `${hours}:${minutes}:${seconds}`;
+    if (remaining === 0) {
+      if (launchButton) launchButton.disabled = true;
+      if (submitButton) submitButton.disabled = true;
+      if (eventState) eventState.textContent = 'Event window closed';
+      setEventMessage('Cipher Day has ended. Flag submissions are closed.');
+      window.clearInterval(countdownTimer);
+    }
+  };
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/cipher-day/status`, { cache: 'no-store' });
+    if (!response.ok) throw new Error('Cipher Day status is unavailable.');
+    eventStatus = await response.json();
+    serverOffset = Date.parse(eventStatus.server_time || '') - Date.now();
+    if (!Number.isFinite(serverOffset)) serverOffset = 0;
+
+    document.querySelectorAll('[data-cipher-points]').forEach((element) => {
+      element.textContent = Number(eventStatus.points || 500).toLocaleString();
+    });
+    if (eventState) eventState.textContent = eventStatus.enabled ? 'Event is live' : 'Event window closed';
+    if (eventStatus.enabled) {
+      updateCountdown();
+      countdownTimer = window.setInterval(updateCountdown, 1000);
+    } else if (countdown) {
+      countdown.textContent = 'CLOSED';
+    }
+    if (!eventStatus.enabled) {
+      setEventMessage('Cipher Day is not active.');
+      if (launchButton) launchButton.disabled = true;
+      if (submitButton) submitButton.disabled = true;
+      return;
+    }
+    if (!eventStatus.launch_ready) {
+      setEventMessage(eventStatus.message || 'The Cipher Day machine is not ready yet.');
+      if (launchButton) launchButton.disabled = true;
+    } else {
+      setEventMessage(machinePage ? 'Event live · machine ready' : 'Event is open');
+      if (launchButton) launchButton.disabled = false;
+    }
+    if (submitButton) submitButton.disabled = false;
+    if (!machinePage) return;
+
+    const screen = safeGetById('cipherDayScreen');
+    const serialLog = safeGetById('cipherDaySerialLog');
+    const serialInput = safeGetById('cipherDaySerialInput');
+    const serialSend = safeGetById('cipherDaySerialSend');
+    const loadV86 = () => new Promise((resolve, reject) => {
+      if (window.V86) {
+        resolve();
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = `${eventStatus.asset_base_url}/v86/build/libv86.js`;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Unable to load the machine emulator assets.'));
+      document.head.appendChild(script);
+    });
+
+    const startMachine = async () => {
+      if (!eventStatus.launch_ready || !screen || emulator) return;
+      if (launchButton) {
+        launchButton.disabled = true;
+        launchButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Starting machine…';
+      }
+      setEventMessage('Downloading browser machine files. First boot may take a few minutes.');
+      setVmStatus('Loading emulator…');
+      screen.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      screen.addEventListener('pointerdown', () => screen.focus({ preventScroll: true }), { once: true });
+      screen.addEventListener('click', () => screen.focus({ preventScroll: true }));
+      try {
+        await loadV86();
+        emulator = new window.V86({
+          wasm_path: `${eventStatus.asset_base_url}/v86/build/v86.wasm`,
+          memory_size: 512 * 1024 * 1024,
+          vga_memory_size: 8 * 1024 * 1024,
+          screen_container: screen,
+          bios: { url: `${eventStatus.asset_base_url}/v86/bios/seabios.bin` },
+          vga_bios: { url: `${eventStatus.asset_base_url}/v86/bios/vgabios.bin` },
+          filesystem: {
+            baseurl: `${eventStatus.asset_base_url}/images/cipher-day-rootfs-flat`,
+            basefs: `${eventStatus.asset_base_url}/images/cipher-day-fs.json`
+          },
+          autostart: true,
+          bzimage_initrd_from_filesystem: true,
+          cmdline: 'rw root=host9p rootfstype=9p rootflags=trans=virtio,cache=loose modules=virtio_pci tsc=reliable console=ttyS0,115200'
+        });
+        emulator.add_listener('emulator-started', () => setVmStatus('Booting Alpine Linux…'));
+        emulator.add_listener('mouse-enable', (enabled) => {
+          if (safeGetById('cipherDayVmStatus')?.textContent.startsWith('Desktop ready')) {
+            setVmStatus(enabled ? 'Desktop ready · mouse active' : 'Desktop ready · click to focus');
+          }
+        });
+        emulator.add_listener('serial0-output-byte', (byte) => {
+          const character = String.fromCharCode(byte);
+          if (character !== '\r' && serialLog) {
+            serialLog.value += character;
+            if (serialLog.value.length > 20000) serialLog.value = serialLog.value.slice(-16000);
+            serialLog.scrollTop = serialLog.scrollHeight;
+          }
+          bootBuffer = (bootBuffer + character).slice(-200);
+          if (bootBuffer.includes('DESKTOP_READY')) {
+            setVmStatus('Desktop ready · case files loaded');
+            if (launchButton) launchButton.innerHTML = '<i class="fa-solid fa-circle-check"></i> Machine running';
+            setEventMessage('Machine is ready. Begin in /root/cipherday/casefiles.');
+          } else if (bootBuffer.endsWith('localhost login: ')) {
+            emulator.serial0_send('root\n');
+            bootBuffer = '';
+          } else if (bootBuffer.endsWith('localhost:~# ')) {
+            serialReady = true;
+            if (serialInput) {
+              serialInput.disabled = false;
+              serialInput.placeholder = 'Run a guest diagnostic command';
+            }
+            if (serialSend) serialSend.disabled = false;
+          }
+        });
+        if (resetButton) resetButton.hidden = false;
+      } catch (error) {
+        setVmStatus('Machine could not start');
+        setEventMessage(error.message);
+        if (launchButton) {
+          launchButton.disabled = false;
+          launchButton.innerHTML = '<i class="fa-solid fa-power-off"></i> Try again';
+        }
+      }
+    };
+
+    if (launchButton) launchButton.addEventListener('click', startMachine);
+    if (resetButton) resetButton.addEventListener('click', () => window.location.reload());
+    const serialForm = safeGetById('cipherDaySerialForm');
+    if (serialForm) {
+      serialForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const command = serialInput?.value.trim();
+        if (!serialReady || !command || !emulator) return;
+        emulator.serial0_send(`${command}\n`);
+        serialInput.value = '';
+        serialInput.focus();
+      });
+    }
+
+    const flagForm = safeGetById('cipherDayFlagForm');
+    if (flagForm) {
+      flagForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const flag = safeGetById('cipherDayFlag')?.value.trim() || '';
+        const result = safeGetById('cipherDayResult');
+        if (!currentUser || !localStorage.getItem('token')) {
+          const next = `${window.location.pathname}${window.location.search}`;
+          window.location.href = `login.html?next=${encodeURIComponent(next)}`;
+          return;
+        }
+        if (!flag) return;
+        if (submitButton) submitButton.disabled = true;
+        if (result) {
+          result.className = 'cipher-day-result';
+          result.textContent = 'Checking with CipherPoint…';
+        }
+        try {
+          const token = localStorage.getItem('token');
+          const submitResponse = await fetch(`${API_BASE_URL}/cipher-day/submit`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({ flag })
+          });
+          const data = await submitResponse.json().catch(() => ({}));
+          if (!submitResponse.ok) throw new Error(data.detail || 'Submission failed.');
+          if (data.success) {
+            if (currentUser) {
+              currentUser.coins = data.total_coins;
+              currentUser.rank_points = data.rank_points;
+              currentUser.solved_challenges = Array.isArray(currentUser.solved_challenges)
+                ? [...new Set([...currentUser.solved_challenges, Number(eventStatus.challenge_id)])]
+                : [Number(eventStatus.challenge_id)];
+              currentUser.solved_count = (currentUser.solved_count || 0) + 1;
+              localStorage.setItem('user', JSON.stringify(currentUser));
+              setUserDisplayState();
+            }
+            if (result) {
+              result.className = 'cipher-day-result success';
+              result.textContent = `Case solved! +${data.coins_earned || eventStatus.points} points · ${data.total_coins} total coins`;
+            }
+            const flagInput = safeGetById('cipherDayFlag');
+            if (flagInput) flagInput.disabled = true;
+          } else if (result) {
+            result.className = 'cipher-day-result error';
+            result.textContent = data.message || 'Incorrect flag. Recheck the evidence.';
+          }
+        } catch (error) {
+          if (result) {
+            result.className = 'cipher-day-result error';
+            result.textContent = error.message;
+          }
+        } finally {
+          if (submitButton) submitButton.disabled = false;
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Cipher Day page initialization failed:', error);
+    if (eventState) eventState.textContent = 'Status unavailable';
+    setEventMessage(error.message);
+    if (launchButton) launchButton.disabled = true;
+    if (submitButton) submitButton.disabled = true;
+  }
+}
+
 async function loadChallenges() {
   const feed = safeGetById('challengeFeed');
   const challengesFeed = safeGetById('challengesFeed');
@@ -1522,7 +1793,7 @@ async function loadChallenges() {
     }
 
     allChallenges = await response.json();
-    filteredChallenges = [...allChallenges];
+    filteredChallenges = allChallenges.filter((challenge) => !challenge.is_cipher_day);
     renderChallenges();
   } catch (error) {
     console.error('Error loading challenges:', error);
@@ -2579,7 +2850,7 @@ async function renderTopChallenges() {
   try {
     const response = await fetch(`${API_BASE_URL}/challenges?limit=5`);
     if (!response.ok) throw new Error('Failed to load top challenges');
-    const challenges = await response.json();
+    const challenges = (await response.json()).filter((challenge) => !challenge.is_cipher_day);
 
     if (!challenges.length) {
       container.innerHTML = '<div class="loading-small">No challenges yet</div>';
@@ -3976,6 +4247,7 @@ function applyChallengeFilters() {
   const difficulty = challengeFilters.difficulty || 'all';
 
   filteredChallenges = allChallenges.filter((challenge) => {
+    if (challenge.is_cipher_day) return false;
     if (difficulty !== 'all' && challenge.difficulty !== difficulty) {
       return false;
     }

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#08121b">
+    <title>Quiet Relay Machine | CipherPoint Cipher Day</title>
+    <meta name="description" content="Launch the isolated Alpine Linux machine for Cipher Day 01: The Quiet Relay.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="cipher-day.css">
+</head>
+<body class="cipher-day-page" data-page="cipher-day-machine">
+    <header class="cipher-day-topbar">
+        <a class="cipher-day-brand" href="dashboard.html">
+            <span class="cipher-day-brand-mark"><i class="fa-solid fa-user-secret"></i></span>
+            <span>CipherPoint<small>Field Events</small></span>
+        </a>
+        <nav class="cipher-day-top-links" aria-label="Event navigation">
+            <a href="cipher-day.html">Event brief</a>
+            <a href="dashboard.html">Dashboard</a>
+            <a href="profile.html">Profile</a>
+        </nav>
+    </header>
+
+    <main class="cipher-day-wrap">
+        <section class="cipher-day-hero" style="grid-template-columns:minmax(0,1fr) 250px">
+            <div>
+                <div class="cipher-day-kicker"><a href="cipher-day.html">Cipher Day 01</a> / Machine detail</div>
+                <h1 style="font-size:clamp(34px,5vw,54px)">Quiet Relay workstation</h1>
+                <p class="cipher-day-lede">A disposable Alpine desktop with the complete case evidence pack. Start your investigation, then submit your finding for server-side validation.</p>
+            </div>
+            <aside class="cipher-day-clock">
+                <div class="cipher-day-clock-label">Time remaining</div>
+                <div class="cipher-day-clock-value" data-cipher-countdown>--:--:--</div>
+                <small data-cipher-event-state>Checking live event status…</small>
+            </aside>
+        </section>
+
+        <div class="cipher-day-action-row" style="margin:0 0 15px">
+            <button type="button" class="cipher-day-button" id="cipherDayLaunch" disabled><i class="fa-solid fa-power-off"></i> Launch machine</button>
+            <button type="button" class="cipher-day-button-secondary" id="cipherDayReset" hidden><i class="fa-solid fa-rotate"></i> Reset machine</button>
+            <span class="cipher-day-message" data-cipher-message>Checking machine configuration…</span>
+        </div>
+
+        <section class="cipher-day-machine-layout">
+            <div class="cipher-day-screen">
+                <div class="cipher-day-screen-head">
+                    <strong><i class="fa-brands fa-linux"></i> Alpine Linux · Openbox · Case files: /root/cipherday/casefiles</strong>
+                    <span id="cipherDayVmStatus">Machine is off</span>
+                </div>
+                <div id="cipherDayScreen" tabindex="0" aria-label="Click to interact with the emulated Linux desktop">
+                    <div id="screen" style="white-space:pre;font:14px monospace;line-height:14px"></div>
+                    <canvas id="vga" style="display:none"></canvas>
+                </div>
+                <div class="cipher-day-screen-note">Click inside the desktop to focus mouse/keyboard input. Right-click for the file manager. This guest has no network interface. Reset discards the current browser session.</div>
+                <details class="cipher-day-console">
+                    <summary>Serial console &amp; boot diagnostics</summary>
+                    <div style="padding:0 14px 14px">
+                        <textarea id="cipherDaySerialLog" readonly aria-label="Alpine serial boot log"></textarea>
+                        <form id="cipherDaySerialForm" class="cipher-day-console-form" autocomplete="off">
+                            <input id="cipherDaySerialInput" aria-label="Alpine serial command" placeholder="Waiting for Alpine serial shell…" disabled>
+                            <button id="cipherDaySerialSend" type="submit" disabled>Send</button>
+                        </form>
+                    </div>
+                </details>
+            </div>
+
+            <aside class="cipher-day-machine-side">
+                <section class="cipher-day-panel">
+                    <div class="cipher-day-panel-head"><h2>Machine profile</h2><span class="cipher-day-chip">Ready</span></div>
+                    <div class="cipher-day-panel-body">
+                        <div class="cipher-day-meta" style="margin-top:0">
+                            <span>Alpine Linux 3.21</span><span>512 MB virtual RAM</span><span>Openbox + xterm</span><span>PCManFM</span><span>Network disabled</span>
+                        </div>
+                        <div class="cipher-day-callout">The guest runs in your browser using v86/WebAssembly. CipherPoint's application server does not boot or host a VM for each learner.</div>
+                    </div>
+                </section>
+
+                <section class="cipher-day-panel">
+                    <div class="cipher-day-panel-head"><h2>Case workflow</h2><span class="cipher-day-label">500 points</span></div>
+                    <div class="cipher-day-panel-body">
+                        <div class="cipher-day-steps">
+                            <div class="cipher-day-step"><b>1</b><span>Read <code>README_FIRST.txt</code> in the casefiles folder.</span></div>
+                            <div class="cipher-day-step"><b>2</b><span>Correlate the email, DNS/proxy records, IOC feed, and snapshots.</span></div>
+                            <div class="cipher-day-step"><b>3</b><span>Submit your campaign flag below; CipherPoint validates it and records the solve.</span></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="cipher-day-panel">
+                    <div class="cipher-day-panel-head"><h2>Submit finding</h2><span class="cipher-day-label">Server-checked</span></div>
+                    <div class="cipher-day-panel-body">
+                        <p>Enter the flag you derived from the evidence.</p>
+                        <form id="cipherDayFlagForm" class="cipher-day-flag-form">
+                            <input id="cipherDayFlag" maxlength="200" autocomplete="off" placeholder="CP{CAMPAIGN_LABEL}" aria-label="Cipher Day flag" required>
+                            <button class="cipher-day-button" id="cipherDaySubmit" type="submit" disabled>Submit</button>
+                        </form>
+                        <div class="cipher-day-result" id="cipherDayResult" aria-live="polite"></div>
+                    </div>
+                </section>
+            </aside>
+        </section>
+    </main>
+    <footer class="cipher-day-page-footer">Do not investigate real targets. All case data is fictional and preloaded into the guest.</footer>
+    <script src="app.js"></script>
+</body>
+</html>

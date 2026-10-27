@@ -302,8 +302,10 @@
         correct_flag: (fd.get('flag') || '').toString().trim(),
         telegram_file_id: (fd.get('telegram_file_id') || fileIdInput?.value || '').toString().trim(),
         points_reward: parseInt(fd.get('points') || '100', 10),
-        hint_1: '',
-        hint_1_cost: 10,
+        hint_1: (fd.get('hint_1') || '').toString().trim(),
+        hint_1_cost: parseInt(fd.get('hint_1_cost') || '10', 10),
+        hint_2: (fd.get('hint_2') || '').toString().trim(),
+        hint_2_cost: parseInt(fd.get('hint_2_cost') || '20', 10),
         solution_walkthrough: (fd.get('walkthrough') || '').toString().trim(),
         tags: (fd.get('tags') || '').toString().trim()
       };

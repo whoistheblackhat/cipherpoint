@@ -146,6 +146,10 @@ button, input {
   color: var(--text);
 }
 
+#cipherDayLandingLink[hidden] {
+  display: none !important;
+}
+
 .top-actions {
   display: flex;
   align-items: center;

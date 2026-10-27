@@ -13,7 +13,7 @@ import asyncio
 
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import jwt
 import bcrypt
 import os
@@ -30,6 +30,7 @@ import hashlib
 from dotenv import load_dotenv
 from typing import Optional
 import json
+from urllib.parse import urlsplit
 from html import escape as escape_html
 from sqlalchemy import text, func
 from sqlalchemy.exc import IntegrityError
@@ -76,6 +77,61 @@ MOBILE_APP_SECRET = os.getenv("MOBILE_APP_SECRET", "").strip()
 MAINTENANCE_MODE = os.getenv("MAINTENANCE_MODE", "false").lower() == "true"
 MAINTENANCE_MESSAGE = os.getenv("MAINTENANCE_MESSAGE", "We're upgrading CipherPoint to serve you better. We'll be back shortly.").strip()
 MAINTENANCE_UNTIL = os.getenv("MAINTENANCE_UNTIL", "").strip() or None  # ISO 8601, e.g. "2026-09-08T18:00:00Z"
+
+CIPHER_DAY_ENV = os.getenv("CIPHER_DAY_ENV", "false").strip().lower() == "true"
+CIPHER_DAY_STARTS_AT = os.getenv("CIPHER_DAY_STARTS_AT", "").strip()
+CIPHER_DAY_ENDS_AT = os.getenv("CIPHER_DAY_ENDS_AT", "").strip()
+CIPHER_DAY_CHALLENGE_ID = int(os.getenv("CIPHER_DAY_CHALLENGE_ID", "0"))
+CIPHER_DAY_ASSET_BASE_URL = os.getenv("CIPHER_DAY_ASSET_BASE_URL", "").strip().rstrip("/")
+if CIPHER_DAY_ASSET_BASE_URL:
+    _cipher_asset_url = urlsplit(CIPHER_DAY_ASSET_BASE_URL)
+    if (
+        not _cipher_asset_url.netloc
+        or _cipher_asset_url.scheme != "https"
+        or _cipher_asset_url.username
+        or _cipher_asset_url.password
+        or _cipher_asset_url.query
+        or _cipher_asset_url.fragment
+    ):
+        raise RuntimeError("CIPHER_DAY_ASSET_BASE_URL must be an HTTPS URL")
+
+
+def _cipher_day_timestamp(value: str) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
+def is_cipher_day_window_open(now: Optional[datetime] = None) -> bool:
+    if not CIPHER_DAY_ENV:
+        return False
+    starts_at = _cipher_day_timestamp(CIPHER_DAY_STARTS_AT)
+    ends_at = _cipher_day_timestamp(CIPHER_DAY_ENDS_AT)
+    if not starts_at or not ends_at or ends_at <= starts_at:
+        return False
+    current_time = now or datetime.utcnow()
+    return starts_at <= current_time < ends_at
+
+
+def is_cipher_day_challenge(challenge: Challenge) -> bool:
+    return CIPHER_DAY_CHALLENGE_ID > 0 and challenge.id == CIPHER_DAY_CHALLENGE_ID
+
+
+def is_cipher_day_challenge_ready(challenge: Optional[Challenge]) -> bool:
+    return bool(
+        is_cipher_day_window_open()
+        and challenge
+        and challenge.status == "approved"
+        and not challenge.is_community
+        and (challenge.points_reward or 0) >= 500
+        and CIPHER_DAY_ASSET_BASE_URL
+    )
 
 
 def get_turnstile_config():
@@ -333,10 +389,13 @@ async def maintenance_gate(request: Request, call_next):
         get a machine-readable signal)
       - 503 with the maintenance.html page for browser GETs
     """
+    path = request.url.path
+    if path in {"/cipher-day.html", "/cipher-day-machine.html"} and not is_cipher_day_window_open():
+        return JSONResponse(status_code=404, content={"detail": "Cipher Day is not available."})
+
     if not is_in_maintenance_window():
         return await call_next(request)
 
-    path = request.url.path
     # Always-allowed paths: status endpoint, the maintenance page itself,
     # the static assets it needs, and the login endpoint so admins can
     # authenticate during maintenance to flip the flag back off.
@@ -414,6 +473,8 @@ def _maintenance_response(request: Request, path: str):
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
+    asset_parts = urlsplit(CIPHER_DAY_ASSET_BASE_URL) if CIPHER_DAY_ASSET_BASE_URL else None
+    cipher_asset_origin = f"{asset_parts.scheme}://{asset_parts.netloc}" if asset_parts else ""
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
@@ -421,11 +482,11 @@ async def add_security_headers(request: Request, call_next):
     # Relaxed CSP to allow CDN assets (fonts, icons) while still blocking inline scripts.
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
+        f"script-src 'self' 'unsafe-inline' 'unsafe-eval' {cipher_asset_origin} https://challenges.cloudflare.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
         "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
         "img-src 'self' data: https://cdnjs.cloudflare.com; "
-        "connect-src 'self' https://api.telegram.org https://challenges.cloudflare.com; "
+        f"connect-src 'self' {cipher_asset_origin} https://api.telegram.org https://challenges.cloudflare.com; "
         "frame-src 'self' https://challenges.cloudflare.com; "
         "frame-ancestors 'none'; "
         "base-uri 'self'; "
@@ -474,6 +535,10 @@ class HintRequest(BaseModel):
 class FlagSubmitRequest(BaseModel):
     challenge_id: int
     flag: str
+
+class CipherDayFlagRequest(BaseModel):
+    flag: str
+
 class ChallengeCreateRequest(BaseModel):
     title: str
     category: str
@@ -2778,6 +2843,7 @@ def get_all_challenges(limit: Optional[int] = None, db: Session = Depends(get_db
             "solved_count": solved_count,
             "status": challenge.status,
             "is_community": bool(challenge.is_community),
+            "is_cipher_day": is_cipher_day_challenge(challenge),
             "comments_count": comment_counts.get(challenge.id, 0),
             "has_walkthrough": bool(challenge.solution_walkthrough),
             "created_at": challenge.created_at
@@ -2833,6 +2899,8 @@ def get_challenge_details(
     challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
 
     if not challenge or challenge.status in {"rejected", "removed"}:
+        raise HTTPException(status_code=404, detail="Challenge not found")
+    if is_cipher_day_challenge(challenge) and not is_cipher_day_window_open():
         raise HTTPException(status_code=404, detail="Challenge not found")
 
     solved_count = db.query(SolvedChallenge).filter(SolvedChallenge.challenge_id == challenge_id).count()
@@ -3680,6 +3748,8 @@ def submit_flag(
     challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found")
+    if is_cipher_day_challenge(challenge) and not is_cipher_day_challenge_ready(challenge):
+        raise HTTPException(status_code=403, detail="Cipher Day challenge is not active.")
     ensure_user_not_banned(user_id, db)
     if challenge.status in {"rejected", "removed"}:
         raise HTTPException(status_code=404, detail="Challenge not found")
@@ -3749,6 +3819,27 @@ def submit_flag(
             "rank_points": user.rank_points
         }
     return {"success": False, "message": "Incorrect flag. Try again!"}
+
+
+@app.post("/api/cipher-day/submit")
+def submit_cipher_day_flag(
+    payload: CipherDayFlagRequest,
+    request: Request,
+    user_id: int = Depends(verify_token),
+    db: Session = Depends(get_db),
+):
+    if not is_cipher_day_window_open():
+        raise HTTPException(status_code=403, detail="Cipher Day is not active.")
+    challenge = db.query(Challenge).filter(Challenge.id == CIPHER_DAY_CHALLENGE_ID).first()
+    if not is_cipher_day_challenge_ready(challenge):
+        raise HTTPException(status_code=503, detail="Cipher Day is not configured yet.")
+    return submit_flag(
+        FlagSubmitRequest(challenge_id=CIPHER_DAY_CHALLENGE_ID, flag=payload.flag),
+        request,
+        user_id,
+        db,
+    )
+
 
 # ==================== LEADERBOARD ROUTES ====================
 
@@ -4070,6 +4161,44 @@ def public_config():
     return get_turnstile_config()
 
 
+@app.get("/api/cipher-day/status")
+def cipher_day_status(db: Session = Depends(get_db)):
+    """Public event state; never returns the challenge answer."""
+    challenge = (
+        db.query(Challenge).filter(Challenge.id == CIPHER_DAY_CHALLENGE_ID).first()
+        if CIPHER_DAY_CHALLENGE_ID > 0
+        else None
+    )
+    window_open = is_cipher_day_window_open()
+    challenge_ready = bool(
+        challenge
+        and challenge.status == "approved"
+        and not challenge.is_community
+        and (challenge.points_reward or 0) >= 500
+    )
+    launch_ready = bool(window_open and challenge_ready and CIPHER_DAY_ASSET_BASE_URL)
+    if not window_open:
+        message = "Cipher Day is not active."
+    elif not challenge_ready:
+        message = "Cipher Day challenge is not configured yet."
+    elif not CIPHER_DAY_ASSET_BASE_URL:
+        message = "Cipher Day machine assets are not configured yet."
+    else:
+        message = None
+    return {
+        "enabled": window_open,
+        "launch_ready": launch_ready,
+        "server_time": datetime.utcnow().isoformat() + "Z",
+        "starts_at": CIPHER_DAY_STARTS_AT or None,
+        "ends_at": CIPHER_DAY_ENDS_AT or None,
+        "challenge_id": CIPHER_DAY_CHALLENGE_ID or None,
+        "title": challenge.title if challenge_ready else "The Quiet Relay",
+        "points": challenge.points_reward if challenge_ready else 500,
+        "asset_base_url": CIPHER_DAY_ASSET_BASE_URL if launch_ready else None,
+        "message": message,
+    }
+
+
 @app.get("/api/maintenance/status")
 def maintenance_status():
     """Public read-only status of maintenance mode. The maintenance
@@ -4186,6 +4315,8 @@ async def serve_sitemap(db: Session = Depends(get_db)):
         ("/privacy.html", today, 0.4),
         ("/leaderboard.html", today, 0.7),
     ]
+    if is_cipher_day_window_open():
+        urls.append(("/cipher-day.html", today, 0.8))
     # Note: dashboard.html is robots-disallowed (it's a login-gated app
     # page), so challenge links intentionally do NOT appear here.
     if False:
@@ -4269,6 +4400,8 @@ if os.path.isdir(FRONTEND_DIR):
     @app.get("/guide-google-dorking.html", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/guide-exif-geolocation.html", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/intel-vault.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/cipher-day.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/cipher-day-machine.html", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/contact.html", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/404.html", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/500.html", response_class=HTMLResponse, include_in_schema=False)

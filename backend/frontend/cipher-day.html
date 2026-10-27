@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#08121b">
+    <title>Cipher Day 01: The Quiet Relay | CipherPoint</title>
+    <meta name="description" content="A limited-time CipherPoint CTI and OSINT case study. Investigate the Quiet Relay and earn 500 points.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="cipher-day.css">
+</head>
+<body class="cipher-day-page" data-page="cipher-day">
+    <header class="cipher-day-topbar">
+        <a class="cipher-day-brand" href="dashboard.html">
+            <span class="cipher-day-brand-mark"><i class="fa-solid fa-user-secret"></i></span>
+            <span>CipherPoint<small>Field Events</small></span>
+        </a>
+        <nav class="cipher-day-top-links" aria-label="Event navigation">
+            <a href="cipher-day.html">Event</a>
+            <a href="dashboard.html">Dashboard</a>
+            <a href="profile.html">Profile</a>
+        </nav>
+    </header>
+
+    <main class="cipher-day-wrap">
+        <section class="cipher-day-hero">
+            <div>
+                <div class="cipher-day-kicker">Cipher Day 01 · CTI + OSINT · Case 001</div>
+                <h1>The Quiet Relay</h1>
+                <p class="cipher-day-lede">A suspicious invoice is more than a bad email. Trace its infrastructure, corroborate the clues, and identify the campaign behind the relay in CipherPoint's first limited-time case study.</p>
+            </div>
+            <aside class="cipher-day-clock">
+                <div class="cipher-day-clock-label">Event window</div>
+                <div class="cipher-day-clock-value" data-cipher-countdown>--:--:--</div>
+                <small data-cipher-event-state>Checking live event status…</small>
+            </aside>
+        </section>
+
+        <section class="cipher-day-grid">
+            <article class="cipher-day-panel">
+                <div class="cipher-day-panel-head">
+                    <h2><i class="fa-solid fa-file-shield"></i> Incident brief</h2>
+                    <span class="cipher-day-chip">Training case</span>
+                </div>
+                <div class="cipher-day-panel-body">
+                    <p>Northstar Payments reported a billing email that failed authentication checks. The sender name looks familiar, but the message carries an unexpected relay and a suspicious invoice link.</p>
+                    <p style="margin-top:12px">Connect email artifacts, synthetic network telemetry, and offline OSINT snapshots. Treat each item as evidence; this fictional exercise makes no real-world attribution.</p>
+                    <div class="cipher-day-facts">
+                        <div class="cipher-day-fact"><strong>Investigation</strong><span>Trace the lure to its campaign cluster</span></div>
+                        <div class="cipher-day-fact"><strong>Lab</strong><span>One isolated Alpine Linux desktop</span></div>
+                        <div class="cipher-day-fact"><strong>Reward</strong><span><b data-cipher-points>500</b> CipherPoints</span></div>
+                    </div>
+                    <div class="cipher-day-action-row">
+                        <a class="cipher-day-button" id="cipherDayOpenMachine" href="cipher-day-machine.html">
+                            Open machine details <i class="fa-solid fa-arrow-right"></i>
+                        </a>
+                        <span class="cipher-day-message" data-cipher-message>Preparing event…</span>
+                    </div>
+                </div>
+            </article>
+
+            <aside class="cipher-day-panel">
+                <div class="cipher-day-panel-head">
+                    <h2>Mission objectives</h2>
+                    <span class="cipher-day-label">500 points</span>
+                </div>
+                <div class="cipher-day-panel-body">
+                    <ol class="cipher-day-objectives">
+                        <li>Compare the visible sender with the envelope sender and Received header.</li>
+                        <li>Trace the lure hostname through DNS and proxy records.</li>
+                        <li>Correlate the infrastructure with the CTI feed and corroborate it with offline OSINT artifacts.</li>
+                        <li>Submit the campaign label through CipherPoint before the event closes.</li>
+                    </ol>
+                    <div class="cipher-day-callout">The lab has no internet connection. Every domain, address, and record in the evidence pack is fictional and reserved for documentation.</div>
+                </div>
+            </aside>
+        </section>
+
+        <section class="cipher-day-panel cipher-day-machine-card">
+            <div class="cipher-day-machine-visual" aria-hidden="true"><span><i class="fa-solid fa-terminal"></i></span></div>
+            <div class="cipher-day-panel-body">
+                <div class="cipher-day-kicker">Your investigation workspace</div>
+                <h2 style="margin:5px 0 7px;font-size:23px">A Linux machine, ready for the case</h2>
+                <p>Launch a disposable Alpine desktop in your browser. The evidence files are preloaded, so you can focus on the investigation rather than installing tools or configuring a network.</p>
+                <div class="cipher-day-meta">
+                    <span><i class="fa-brands fa-linux"></i> Alpine Linux</span>
+                    <span><i class="fa-solid fa-desktop"></i> Openbox desktop</span>
+                    <span><i class="fa-solid fa-wifi"></i> Offline evidence pack</span>
+                    <span><i class="fa-solid fa-rotate"></i> Resettable session</span>
+                </div>
+                <div class="cipher-day-action-row">
+                    <a class="cipher-day-button" href="cipher-day-machine.html">View machine &amp; launch lab <i class="fa-solid fa-arrow-right"></i></a>
+                    <span class="cipher-day-message" data-cipher-message></span>
+                </div>
+            </div>
+        </section>
+    </main>
+    <footer class="cipher-day-page-footer">Cipher Day is a scheduled event. Your solve and 500-point reward are recorded by CipherPoint's server.</footer>
+    <script src="app.js"></script>
+</body>
+</html>

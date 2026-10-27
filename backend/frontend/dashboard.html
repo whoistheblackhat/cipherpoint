@@ -11,6 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="cipher-day.css">
 </head>
 <body data-page="dashboard">
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
@@ -33,6 +34,10 @@
                         <a href="dashboard.html" class="sidebar-link active">
                             <i class="fa-solid fa-house"></i>
                             <span>Dashboard</span>
+                        </a>
+                        <a href="cipher-day.html" class="sidebar-link" id="cipherDayNavLink" hidden>
+                            <i class="fa-solid fa-satellite-dish"></i>
+                            <span>Cipher Day</span>
                         </a>
                         <a href="leaderboard.html" class="sidebar-link">
                             <i class="fa-solid fa-trophy"></i>
@@ -114,6 +119,14 @@
             </header>
 
             <main class="container" style="padding: 24px 0;">
+                <a class="cipher-day-promo" id="cipherDayPromo" href="cipher-day.html" hidden>
+                    <span class="cipher-day-promo-icon"><i class="fa-solid fa-satellite-dish"></i></span>
+                    <span class="cipher-day-promo-copy">
+                        <strong>Cipher Day is live</strong>
+                        <span>A limited-time CTI + OSINT case study is waiting for you.</span>
+                    </span>
+                    <span class="cipher-day-promo-action">Enter event <i class="fa-solid fa-arrow-right"></i></span>
+                </a>
                 <div class="dashboard-grid">
                     <section class="feed-column">
                         <div id="challengeFeed" class="challenge-feed"></div>

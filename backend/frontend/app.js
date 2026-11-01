@@ -2984,7 +2984,37 @@ async function loadAuthenticatedMedia(container) {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!response.ok) throw new Error(`Protected media request failed (${response.status})`);
-      image.src = URL.createObjectURL(await response.blob());
+      const bytes = await response.arrayBuffer();
+      const head = new Uint8Array(bytes, 0, Math.min(bytes.byteLength, 16));
+      const startsWith = (...signature) => signature.every((byte, index) => head[index] === byte);
+      let mediaType = '';
+      if (startsWith(0xff, 0xd8, 0xff)) mediaType = 'image/jpeg';
+      else if (startsWith(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) mediaType = 'image/png';
+      else if (startsWith(0x47, 0x49, 0x46, 0x38)) mediaType = 'image/gif';
+      else if (startsWith(0x52, 0x49, 0x46, 0x46) && head[8] === 0x57 && head[9] === 0x45 && head[10] === 0x42 && head[11] === 0x50) mediaType = 'image/webp';
+      else if (startsWith(0x1a, 0x45, 0xdf, 0xa3)) mediaType = 'video/webm';
+      else if (head.length >= 12 && head[4] === 0x66 && head[5] === 0x74 && head[6] === 0x79 && head[7] === 0x70) {
+        mediaType = 'video/mp4';
+      } else {
+        const declaredType = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase();
+        if (declaredType?.startsWith('image/') || declaredType?.startsWith('video/')) {
+          mediaType = declaredType;
+        } else {
+          throw new Error(`Unsupported protected media type (${declaredType || 'unknown'})`);
+        }
+      }
+
+      const mediaUrlObject = URL.createObjectURL(new Blob([bytes], { type: mediaType }));
+      if (mediaType.startsWith('video/')) {
+        const video = document.createElement('video');
+        video.controls = true;
+        video.preload = 'metadata';
+        video.onerror = () => handleMediaError(video);
+        video.src = mediaUrlObject;
+        image.replaceWith(video);
+      } else {
+        image.src = mediaUrlObject;
+      }
     } catch (error) {
       console.error('Unable to load protected challenge media:', error);
       image.parentElement.innerHTML = '<span class="media-placeholder"><i class="fa-solid fa-broken-image"></i><span>Media unavailable</span></span>';

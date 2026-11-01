@@ -4248,11 +4248,6 @@ def cipher_day_status(
         "challenge_id": (CIPHER_DAY_CHALLENGE_ID or None) if launch_ready else None,
         "title": challenge.title if challenge_ready else "The Quiet Relay",
         "points": challenge.points_reward if challenge_ready else 500,
-        "media_url": (
-            f"/api/media/{challenge.telegram_file_id}"
-            if user_id and window_open and challenge_ready and challenge.telegram_file_id
-            else None
-        ),
         "asset_base_url": CIPHER_DAY_ASSET_BASE_URL if launch_ready else None,
         "message": message,
     }

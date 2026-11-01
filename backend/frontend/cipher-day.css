@@ -139,6 +139,19 @@
 }
 
 .cipher-day-panel { overflow: hidden; }
+.cipher-day-evidence-panel { margin-top: 19px; }
+.cipher-day-evidence-panel .media-wrapper {
+  overflow: hidden;
+  border: 1px solid var(--event-line);
+  border-radius: 10px;
+  background: #050a0e;
+}
+.cipher-day-evidence-panel .media-wrapper img,
+.cipher-day-evidence-panel .media-wrapper video {
+  width: 100%;
+  max-height: 580px;
+  object-fit: contain;
+}
 .cipher-day-panel-head {
   display: flex;
   align-items: center;

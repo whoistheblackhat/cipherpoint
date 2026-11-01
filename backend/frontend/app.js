@@ -1634,6 +1634,15 @@ async function initializeCipherDayPage(machinePage) {
       setEventMessage(machinePage ? 'Event live · machine ready' : 'Event is open');
       if (launchButton) launchButton.disabled = false;
     }
+    if (!machinePage && eventStatus.media_url) {
+      const mediaPanel = safeGetById('cipherDayChallengeMediaPanel');
+      const mediaContainer = safeGetById('cipherDayChallengeMedia');
+      if (mediaPanel && mediaContainer) {
+        mediaContainer.innerHTML = renderMedia(eventStatus.media_url, true);
+        mediaPanel.hidden = false;
+        await loadAuthenticatedMedia(mediaContainer);
+      }
+    }
     if (submitButton) submitButton.disabled = false;
     if (!machinePage) return;
 

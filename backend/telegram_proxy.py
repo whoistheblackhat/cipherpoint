@@ -860,20 +860,44 @@ def get_telegram_file(file_id: str):
                 file_response = requests.get(download_url, stream=True, timeout=30)
                 file_response.raise_for_status()
 
-                mime_type = "application/octet-stream"
-                if file_path.lower().endswith(('.jpg', '.jpeg')):
+                chunks = file_response.iter_content(chunk_size=8192)
+                first_chunk = next(chunks, b"")
+                if first_chunk.startswith(b"\xff\xd8\xff"):
                     mime_type = "image/jpeg"
-                elif file_path.lower().endswith('.png'):
+                elif first_chunk.startswith(b"\x89PNG\r\n\x1a\n"):
                     mime_type = "image/png"
-                elif file_path.lower().endswith('.gif'):
+                elif first_chunk.startswith((b"GIF87a", b"GIF89a")):
                     mime_type = "image/gif"
-                elif file_path.lower().endswith(('.mp4', '.webm', '.mov')):
-                    mime_type = "video/mp4"
-                elif file_path.lower().endswith('.pdf'):
-                    mime_type = "application/pdf"
+                elif first_chunk[:4] == b"RIFF" and first_chunk[8:12] == b"WEBP":
+                    mime_type = "image/webp"
+                elif first_chunk[:4] == b"\x1a\x45\xdf\xa3":
+                    mime_type = "video/webm"
+                elif len(first_chunk) >= 12 and first_chunk[4:8] == b"ftyp":
+                    mime_type = "video/quicktime" if b"qt  " in first_chunk[8:16] else "video/mp4"
+                else:
+                    extension = os.path.splitext(file_path.lower())[1]
+                    mime_type = {
+                        ".jpg": "image/jpeg",
+                        ".jpeg": "image/jpeg",
+                        ".png": "image/png",
+                        ".gif": "image/gif",
+                        ".webp": "image/webp",
+                        ".mp4": "video/mp4",
+                        ".webm": "video/webm",
+                        ".mov": "video/quicktime",
+                        ".pdf": "application/pdf",
+                    }.get(extension, "application/octet-stream")
+
+                def stream_file():
+                    try:
+                        if first_chunk:
+                            yield first_chunk
+                        yield from chunks
+                    finally:
+                        file_response.close()
 
                 return StreamingResponse(
-                    file_response.iter_content(chunk_size=8192),
+                    stream_file(),
                     media_type=mime_type,
                     headers={
                         "Cache-Control": "public, max-age=86400",

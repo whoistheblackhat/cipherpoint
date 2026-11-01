@@ -139,15 +139,24 @@
 }
 
 .cipher-day-panel { overflow: hidden; }
-.cipher-day-evidence-panel { margin-top: 19px; }
-.cipher-day-evidence-panel .media-wrapper {
+.cipher-day-challenge-attachment {
+  margin-top: 16px;
+  border-top: 1px solid var(--event-line);
+  padding-top: 14px;
+}
+.cipher-day-challenge-attachment h3 {
+  margin: 0 0 10px;
+  color: #dce8eb;
+  font-size: 13px;
+}
+.cipher-day-challenge-attachment .media-wrapper {
   overflow: hidden;
   border: 1px solid var(--event-line);
   border-radius: 10px;
   background: #050a0e;
 }
-.cipher-day-evidence-panel .media-wrapper img,
-.cipher-day-evidence-panel .media-wrapper video {
+.cipher-day-challenge-attachment .media-wrapper img,
+.cipher-day-challenge-attachment .media-wrapper video {
   width: 100%;
   max-height: 580px;
   object-fit: contain;

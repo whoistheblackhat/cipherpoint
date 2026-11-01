@@ -1534,35 +1534,28 @@ async function loadCipherDayPromo() {
     const response = await fetch(`${API_BASE_URL}/cipher-day/status`, { cache: 'no-store' });
     if (!response.ok) throw new Error('Cipher Day status request failed');
     const status = await response.json();
-    const visible = status.enabled === true;
+    const visible = true;
     if (promo) promo.hidden = !visible;
     if (navLink) navLink.hidden = !visible;
     if (landingLink) landingLink.hidden = !visible;
-    if (landingStatus) landingStatus.textContent = visible ? 'LIVE NOW · LIMITED-TIME FIELD EVENT' : 'COMING SOON';
+    if (landingStatus) landingStatus.textContent = 'LIVE NOW · LIMITED-TIME FIELD EVENT';
     if (landingAction) {
-      if (visible) {
-        landingAction.href = 'cipher-day.html';
-        landingAction.textContent = 'View live event →';
-        landingAction.classList.remove('cipher-day-promo-disabled');
-        landingAction.removeAttribute('aria-disabled');
-      } else {
-        landingAction.removeAttribute('href');
-        landingAction.textContent = 'Coming soon';
-        landingAction.classList.add('cipher-day-promo-disabled');
-        landingAction.setAttribute('aria-disabled', 'true');
-      }
+      landingAction.href = 'cipher-day.html';
+      landingAction.textContent = 'View live event →';
+      landingAction.classList.remove('cipher-day-promo-disabled');
+      landingAction.removeAttribute('aria-disabled');
     }
   } catch (error) {
     console.warn('Cipher Day availability could not be loaded:', error);
-    if (promo) promo.hidden = true;
-    if (navLink) navLink.hidden = true;
-    if (landingLink) landingLink.hidden = true;
-    if (landingStatus) landingStatus.textContent = 'COMING SOON';
+    if (promo) promo.hidden = false;
+    if (navLink) navLink.hidden = false;
+    if (landingLink) landingLink.hidden = false;
+    if (landingStatus) landingStatus.textContent = 'LIVE NOW · LIMITED-TIME FIELD EVENT';
     if (landingAction) {
-      landingAction.removeAttribute('href');
-      landingAction.textContent = 'Coming soon';
-      landingAction.classList.add('cipher-day-promo-disabled');
-      landingAction.setAttribute('aria-disabled', 'true');
+      landingAction.href = 'cipher-day.html';
+      landingAction.textContent = 'View live event →';
+      landingAction.classList.remove('cipher-day-promo-disabled');
+      landingAction.removeAttribute('aria-disabled');
     }
   }
 }

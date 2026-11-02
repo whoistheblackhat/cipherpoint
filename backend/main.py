@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 import jwt
 import bcrypt
 import os
+import json
 import re
 import secrets
 import tempfile
@@ -29,7 +30,6 @@ import hmac
 import hashlib
 from dotenv import load_dotenv
 from typing import Optional
-import json
 from urllib.parse import urlsplit
 from html import escape as escape_html
 from sqlalchemy import text, func
@@ -83,6 +83,39 @@ CIPHER_DAY_STARTS_AT = os.getenv("CIPHER_DAY_STARTS_AT", "").strip()
 CIPHER_DAY_ENDS_AT = os.getenv("CIPHER_DAY_ENDS_AT", "").strip()
 CIPHER_DAY_CHALLENGE_ID = int(os.getenv("CIPHER_DAY_CHALLENGE_ID", "0"))
 CIPHER_DAY_ASSET_BASE_URL = os.getenv("CIPHER_DAY_ASSET_BASE_URL", "").strip().rstrip("/")
+_landing_event_raw = os.getenv("LANDING_EVENT", "").strip()
+try:
+    LANDING_EVENT = json.loads(_landing_event_raw) if _landing_event_raw else None
+except json.JSONDecodeError as exc:
+    raise RuntimeError("LANDING_EVENT must contain valid JSON") from exc
+if LANDING_EVENT is not None:
+    if not isinstance(LANDING_EVENT, dict):
+        raise RuntimeError("LANDING_EVENT must be a JSON object")
+    for _required_event_field in ("title", "description", "link", "action_label"):
+        if not isinstance(LANDING_EVENT.get(_required_event_field), str) or not LANDING_EVENT[_required_event_field].strip():
+            raise RuntimeError(f"LANDING_EVENT.{_required_event_field} must be a non-empty string")
+    if not isinstance(LANDING_EVENT.get("eyebrow", "UPCOMING EVENT"), str):
+        raise RuntimeError("LANDING_EVENT.eyebrow must be a string")
+    if not isinstance(LANDING_EVENT.get("details", []), list) or not all(
+        isinstance(detail, str) and detail.strip() for detail in LANDING_EVENT.get("details", [])
+    ):
+        raise RuntimeError("LANDING_EVENT.details must be a list of non-empty strings")
+    _event_link = LANDING_EVENT["link"].strip()
+    _event_link_parts = urlsplit(_event_link)
+    if (
+        not _event_link
+        or _event_link.startswith("//")
+        or (_event_link_parts.scheme and (_event_link_parts.scheme != "https" or not _event_link_parts.netloc))
+    ):
+        raise RuntimeError("LANDING_EVENT.link must be a relative URL or an HTTPS URL")
+    LANDING_EVENT = {
+        "eyebrow": LANDING_EVENT.get("eyebrow", "UPCOMING EVENT").strip() or "UPCOMING EVENT",
+        "title": LANDING_EVENT["title"].strip(),
+        "description": LANDING_EVENT["description"].strip(),
+        "details": [detail.strip() for detail in LANDING_EVENT.get("details", [])],
+        "link": _event_link,
+        "action_label": LANDING_EVENT["action_label"].strip(),
+    }
 if CIPHER_DAY_ASSET_BASE_URL:
     _cipher_asset_url = urlsplit(CIPHER_DAY_ASSET_BASE_URL)
     if (
@@ -4205,6 +4238,13 @@ def health_check():
 def public_config():
     """Expose public client config without leaking secrets."""
     return get_turnstile_config()
+
+
+@app.get("/api/landing-event")
+def landing_event_config(response: Response):
+    """Return the optional, public event configured for the landing page."""
+    response.headers["Cache-Control"] = "no-store"
+    return {"event": LANDING_EVENT}
 
 
 @app.get("/api/cipher-day/status")

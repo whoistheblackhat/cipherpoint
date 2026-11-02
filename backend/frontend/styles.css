@@ -150,6 +150,10 @@ button, input {
   display: none !important;
 }
 
+#cipherDayLandingPromo[hidden] {
+  display: none !important;
+}
+
 #cipherDayNavLink[hidden],
 .sidebar-link[hidden],
 #cipherDayPromo[hidden] {

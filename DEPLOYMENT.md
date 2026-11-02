@@ -67,6 +67,22 @@ the existing site-wide maintenance switch is not used. Turning the event off
 prevents future launches and flag submissions, but cannot revoke files already
 downloaded into a learner's browser.
 
+## Landing page event promotion
+
+The optional landing-page event card is hidden unless `LANDING_EVENT` is set.
+Configure it as a JSON object in the hosting dashboard; clearing the variable
+hides the card again. For example:
+
+```json
+{"eyebrow":"REGISTRATION OPEN","title":"November OSINT Challenge","description":"Join this month's investigation.","details":["Starts November 20","500 CipherPoints"],"link":"cipher-day.html","action_label":"View event"}
+```
+
+`title`, `description`, `link`, and `action_label` are required. `eyebrow`
+defaults to `UPCOMING EVENT`, and `details` defaults to an empty list. Links may
+be relative to the site or use HTTPS. The card content is rendered as text, not
+HTML. This setting only controls the landing-page promotion; Cipher Day's
+separate availability and challenge controls remain unchanged.
+
 The local build directory is about 642 MiB, but that includes redundant build
 outputs. `cipher-day-rootfs.tar` (~474 MiB) is a build/export intermediate and
 is not required by the browser. The browser runtime needs the compressed

@@ -491,6 +491,7 @@ async function initializePage() {
   if (page === 'landing') {
     updateLandingAuthState();
     await loadCipherDayPromo();
+    await loadLandingEvent();
     initNetworkAnimation();
     return;
   }
@@ -1526,37 +1527,56 @@ async function loadCipherDayPromo() {
   const promo = safeGetById('cipherDayPromo');
   const navLink = safeGetById('cipherDayNavLink');
   const landingLink = safeGetById('cipherDayLandingLink');
-  const landingPromo = safeGetById('cipherDayLandingPromo');
-  const landingStatus = safeGetById('cipherDayLandingStatus');
-  const landingAction = safeGetById('cipherDayLandingAction');
-  if (!promo && !navLink && !landingLink && !landingPromo) return;
+  if (!promo && !navLink && !landingLink) return;
   try {
     const response = await fetch(`${API_BASE_URL}/cipher-day/status`, { cache: 'no-store' });
     if (!response.ok) throw new Error('Cipher Day status request failed');
     const status = await response.json();
-    const visible = true;
+    const visible = Boolean(status.enabled);
     if (promo) promo.hidden = !visible;
     if (navLink) navLink.hidden = !visible;
     if (landingLink) landingLink.hidden = !visible;
-    if (landingStatus) landingStatus.textContent = 'LIVE NOW · LIMITED-TIME FIELD EVENT';
-    if (landingAction) {
-      landingAction.href = 'cipher-day.html';
-      landingAction.textContent = 'View live event →';
-      landingAction.classList.remove('cipher-day-promo-disabled');
-      landingAction.removeAttribute('aria-disabled');
-    }
   } catch (error) {
     console.warn('Cipher Day availability could not be loaded:', error);
-    if (promo) promo.hidden = false;
-    if (navLink) navLink.hidden = false;
-    if (landingLink) landingLink.hidden = false;
-    if (landingStatus) landingStatus.textContent = 'LIVE NOW · LIMITED-TIME FIELD EVENT';
-    if (landingAction) {
-      landingAction.href = 'cipher-day.html';
-      landingAction.textContent = 'View live event →';
-      landingAction.classList.remove('cipher-day-promo-disabled');
-      landingAction.removeAttribute('aria-disabled');
+    if (promo) promo.hidden = true;
+    if (navLink) navLink.hidden = true;
+    if (landingLink) landingLink.hidden = true;
+  }
+}
+
+async function loadLandingEvent() {
+  const promo = safeGetById('cipherDayLandingPromo');
+  if (!promo) return;
+  try {
+    const response = await fetch(`${API_BASE_URL}/landing-event`, { cache: 'no-store' });
+    if (!response.ok) throw new Error('Landing event request failed');
+    const { event } = await response.json();
+    if (!event) {
+      promo.hidden = true;
+      return;
     }
+
+    const actionUrl = new URL(event.link, window.location.href);
+    if (actionUrl.protocol !== 'https:' && actionUrl.origin !== window.location.origin) {
+      throw new Error('Landing event link must use HTTPS');
+    }
+
+    safeGetById('cipherDayLandingStatus').textContent = event.eyebrow;
+    safeGetById('cipherDayLandingTitle').textContent = event.title;
+    safeGetById('cipherDayLandingDescription').textContent = event.description;
+    const details = safeGetById('cipherDayLandingDetails');
+    details.replaceChildren(...event.details.map((detail) => {
+      const item = document.createElement('span');
+      item.textContent = detail;
+      return item;
+    }));
+    const action = safeGetById('cipherDayLandingAction');
+    action.href = actionUrl.href;
+    action.textContent = event.action_label;
+    promo.hidden = false;
+  } catch (error) {
+    console.warn('Landing event could not be loaded:', error);
+    promo.hidden = true;
   }
 }
 

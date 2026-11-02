@@ -27,6 +27,8 @@ services:
         value: "https://cipherpoint.onrender.com"
       - key: TURNSTILE_ENABLED
         sync: false
+      - key: LANDING_EVENT
+        sync: false
       - key: HOST
         value: "0.0.0.0"
       - key: TELEGRAM_BOT_TOKENS
